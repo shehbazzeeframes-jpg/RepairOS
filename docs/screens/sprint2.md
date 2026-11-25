@@ -383,9 +383,9 @@ One h1 per page; status is never colour-only (`StatusBadge` icon + text; overdue
 What shipped and where it differs from the text above; everything else is as specified.
 
 - **Prototype route removed.** `/prototype/check-in`, its component, mock model and `isPrototypeEnabled` are gone; the helpers it proved (`focusSoon`, quick-create seeding, IMEI copy, issue filter) live in `apps/web/src/lib/focus.ts` and `lib/check-in.ts`. The keystroke budget is now proven on `/tickets/new` (returning path 7 keys after the search term, new customer + device 49).
-- **R1 / R5 call sites:** `apps/web/src/lib/contract-additions.ts` (`fetchModelSuggestions`, one box, `type`/`brand` optional; `searchCheckInCustomers`, `GET /api/customers?archived=true&limit=25`, first 8 shown). R7 needed no web change.
-- **Check-in search description:** `CustomerListItem` has no "last device", so a result shows phone (or email) and the open-ticket count instead of "{phone} · {last device}".
-- **Check-in search limit:** the list API only takes 25/50/100, so the page asks for 25 and shows 8.
+- **R1 / R5 call sites:** `apps/web/src/lib/sprint2-queries.ts`: `fetchModelSuggestions` (`ModelSuggestionsQuery`, one box, `type`/`brand` optional; falls back to the contract's `suggestModels` over the catalogue if the request fails) and `searchCheckInCustomers` (`GET GLOBAL_SEARCH_PATH?q=&limit=8&includeArchived=true`, `GlobalSearchQuery`). The temporary `contract-additions.ts` shim is gone. R7 needed no web change.
+- **Check-in search description:** `SearchCustomerResult` has no "last device" (nor an open-ticket count), so a result shows phone (or email), plus "Archived · Restore and use" when archived.
+- **Check-in search limit:** global search takes `limit` up to 10; check-in asks for 8.
 - **Version conflict copy:** on `STALE_RECORD` the Edit details dialog reads the newest timeline item (`GET …/timeline?filter=all&limit=1`) and says "This ticket was changed by {actor}." (contract `STALE_TICKET_MESSAGE` when unknown), with Reload; input is kept.
 - **Global search ↵:** the palette has no highlight until an arrow key, so ↵ with nothing highlighted opens the top result (an exact ticket number / IMEI / serial is put first): the scanner path.
 - **A13 banner:** "You're now working in {shop}. This page was reloaded." is latched in `lib/shop-changed.ts` (the shell remounts per shop). Proven by the two-tab test in `e2e/tests/sprint2-shell.spec.ts`.

@@ -232,7 +232,9 @@ test('an archived customer is offered with "Restore and use" and restored before
   await page.keyboard.press('Enter');
   await expect(page.getByText("Restored. They're back in lists and search.")).toBeVisible();
   expect(
-    api.state.calls.some((c) => c.path === '/api/customers' && c.search.includes('archived=true')),
+    api.state.calls.some(
+      (c) => c.path === '/api/search' && c.search.includes('includeArchived=true'),
+    ),
   ).toBe(true);
   expect(api.writes.some((w) => w.path === '/api/customers/cus_4/restore')).toBe(true);
 });

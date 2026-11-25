@@ -13,8 +13,12 @@ import {
   CustomerListResponse,
   CustomerTagsResponse,
   DASHBOARD_PATH,
+  DEVICE_ACTION_PATHS,
   DashboardSummary,
   DeviceListResponse,
+  GLOBAL_SEARCH_PATH,
+  GlobalSearchResponse,
+  ModelSuggestionsResponse,
   TICKET_COUNTS_REFRESH_MS,
   TICKET_SETTINGS_PATH,
   TICKET_STATUS_PATHS,
@@ -24,7 +28,11 @@ import {
   TicketSettings,
   TicketStatusListResponse,
   TimelineResponse,
+  suggestModels,
   ticketPath,
+  type GlobalSearchQuery,
+  type ModelSuggestionsQuery,
+  type SearchCustomerResult,
   type TimelineFilter,
 } from '@repairos/contracts';
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
@@ -179,4 +187,63 @@ export function useCustomerTags() {
     queryFn: () => apiFetch(CUSTOMER_ACTION_PATHS.tags, CustomerTagsResponse),
     staleTime: 60_000,
   });
+}
+
+// ---------- Check-in and device dialog searches ----------
+
+export type ModelSuggestion = ModelSuggestionsResponse['items'][number];
+
+/**
+ * GET /api/devices/model-suggestions (R1 one-box search: `type` and `brand` optional). If the request
+ * fails (not when it is aborted) the catalogue is ranked here with the contract's own `suggestModels`,
+ * so the box still fills Type and Brand offline; the shop's history is the only thing missing then.
+ */
+export async function fetchModelSuggestions(
+  query: Partial<ModelSuggestionsQuery>,
+  signal?: AbortSignal,
+): Promise<ModelSuggestion[]> {
+  const params = new URLSearchParams();
+  const q = query.q?.trim();
+  const brand = query.brand?.trim();
+  if (q) params.set('q', q);
+  if (query.type) params.set('type', query.type);
+  if (brand) params.set('brand', brand);
+  params.set('limit', String(query.limit ?? 8));
+  try {
+    const r = await apiFetch(
+      `${DEVICE_ACTION_PATHS.modelSuggestions}?${params.toString()}`,
+      ModelSuggestionsResponse,
+      { signal },
+    );
+    return r.items;
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    return suggestModels({ q, type: query.type, brand, limit: query.limit ?? 8 });
+  }
+}
+
+export const CHECK_IN_SEARCH_LIMIT = 8;
+
+/**
+ * Check-in's customer search (R5): GET GLOBAL_SEARCH_PATH with `includeArchived=true`, so an archived
+ * customer is offered with "Restore and use" (`archivedAt` set). Erased customers never match.
+ */
+export async function searchCheckInCustomers(
+  q: string,
+  signal?: AbortSignal,
+): Promise<SearchCustomerResult[]> {
+  const query: GlobalSearchQuery = {
+    q: q.trim(),
+    limit: CHECK_IN_SEARCH_LIMIT,
+    includeArchived: true,
+  };
+  const params = new URLSearchParams({
+    q: query.q,
+    limit: String(query.limit),
+    includeArchived: String(query.includeArchived),
+  });
+  const r = await apiFetch(`${GLOBAL_SEARCH_PATH}?${params.toString()}`, GlobalSearchResponse, {
+    signal,
+  });
+  return r.customers;
 }

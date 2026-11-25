@@ -38,7 +38,7 @@ import { SHOP, USER, apiError, mockApi, type MockApiState } from './mock-api';
 /**
  * A small in-memory fake of the Sprint 2 API for the mocked e2e suite. Every fixture and every
  * response body is parsed with the contract schema, so a contract change breaks the mocks loudly.
- * R1 (model suggestions `{ type, brand, model }`) and R5 (`archived=true` in check-in search) are
+ * R1 (model suggestions `{ type, brand, model }`) and R5 (`includeArchived=true` in check-in search) are
  * mocked to the shapes in backend commit 2367930.
  */
 
@@ -1092,15 +1092,25 @@ export async function mockSprint2(page: Page, options: FakeOptions): Promise<Fak
       );
     },
     'GET /api/search': (route, req) => {
-      const q = (new URL(req.url()).searchParams.get('q') ?? '').toLowerCase();
+      const u = new URL(req.url());
+      const q = (u.searchParams.get('q') ?? '').toLowerCase();
+      const includeArchived = u.searchParams.get('includeArchived') === 'true';
+      const limit = Number(u.searchParams.get('limit') ?? 5);
+      const digits = q.replace(/\D/g, '').replace(/^0+/, '');
       const tickets = world.tickets.filter(
         (t) =>
           t.numberLabel.toLowerCase().includes(q) ||
           t.customer.displayName.toLowerCase().includes(q),
       );
-      const customers = world.customers.filter(
-        (c) => !c.archivedAt && c.displayName.toLowerCase().includes(q),
-      );
+      const customers = world.customers
+        .filter((c) => includeArchived || !c.archivedAt)
+        .filter(
+          (c) =>
+            c.displayName.toLowerCase().includes(q) ||
+            (digits.length >= 4 && (c.primaryPhone ?? '').includes(digits)) ||
+            (c.email ?? '').includes(q),
+        )
+        .slice(0, limit);
       return json(
         route,
         200,

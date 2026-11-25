@@ -85,6 +85,7 @@ import {
   type DeviceTypeValue,
   type DuplicateMatch,
   type IssueCode,
+  type SearchCustomerResult,
   type TicketPriority,
 } from '@repairos/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -121,17 +122,15 @@ import {
   type LockDraft,
   type NewDeviceDraft,
 } from '@/lib/check-in';
-import {
-  fetchModelSuggestions,
-  searchCheckInCustomers,
-  type ModelSuggestionR1,
-} from '@/lib/contract-additions';
 import { errorCode, errorMessage } from '@/lib/errors';
 import { focusField, focusIn, isTypingTarget } from '@/lib/focus';
 import { qk } from '@/lib/queries';
 import { useSession } from '@/lib/shop-context';
 import {
   customerPath,
+  fetchModelSuggestions,
+  searchCheckInCustomers,
+  type ModelSuggestion,
   useAssignees,
   useCheckInContext,
   useCustomer,
@@ -144,7 +143,7 @@ import { formatDateTime, formatLocalDate, todayInZone } from '@/lib/timezone';
 type CustomerItem = {
   id: string;
   label: string;
-  auxiliaryData: { customer?: CustomerListItem; match?: DeviceLookupMatch; isNew?: boolean };
+  auxiliaryData: { customer?: SearchCustomerResult; match?: DeviceLookupMatch; isNew?: boolean };
 };
 
 type ModelItem = {
@@ -160,7 +159,9 @@ const CURRENCY_PREFIX = { GBP: '£', USD: '$', PKR: 'Rs' } as const;
 const byLastTicket = (a: Device, b: Device) =>
   (b.lastTicketAt ?? '').localeCompare(a.lastTicketAt ?? '');
 
-const pickFromListItem = (c: CustomerListItem): CustomerPick => ({
+const pickFromListItem = (
+  c: Pick<CustomerListItem, 'id' | 'displayName' | 'primaryPhone' | 'email' | 'archivedAt'>,
+): CustomerPick => ({
   id: c.id,
   displayName: c.displayName,
   primaryPhone: c.primaryPhone,
@@ -809,7 +810,7 @@ function CheckInForm({
         ctl.current?.abort();
         const controller = new AbortController();
         ctl.current = controller;
-        const items: ModelSuggestionR1[] = await fetchModelSuggestions(
+        const items: ModelSuggestion[] = await fetchModelSuggestions(
           { q },
           controller.signal,
         ).catch(() => []);
@@ -955,8 +956,9 @@ function CheckInForm({
                     item={item}
                     description={[
                       c.archivedAt ? 'Archived · Restore and use' : null,
-                      c.primaryPhone ? formatPhone(c.primaryPhone, shop.country) : (c.email ?? null),
-                      c.openTicketCount ? `${c.openTicketCount} open` : null,
+                      c.primaryPhone
+                        ? formatPhone(c.primaryPhone, shop.country)
+                        : (c.email ?? null),
                     ]
                       .filter(Boolean)
                       .join(' · ')}

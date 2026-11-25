@@ -21,12 +21,14 @@ export function toShopDto(row: ShopRow): Shop {
   };
 }
 
-export function isValidTimeZone(tz: string): boolean {
+/** Canonical IANA name (e.g. "europe/london" → "Europe/London"), or null when unknown. */
+export function canonicalTimeZone(tz: string): string | null {
+  // Offset zones ("+05:00") are valid for Intl but have no DST rules: require an IANA name.
+  if (/^[+-]/.test(tz.trim())) return null;
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return true;
+    return new Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -51,8 +53,8 @@ export class ShopsService {
    */
   async create(auth: AuthContext, input: CreateShopInput): Promise<Shop> {
     const market = MARKET_DEFAULTS[input.country];
-    const timezone = input.timezone ?? market.timezone;
-    if (!isValidTimeZone(timezone)) {
+    const timezone = canonicalTimeZone(input.timezone ?? market.timezone);
+    if (!timezone) {
       throw validationFailed([{ path: ['timezone'], message: 'Unknown time zone' }]);
     }
     const phone = normalisePhone(input.phone, input.country);

@@ -2,6 +2,7 @@ import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@ne
 import { Reflector } from '@nestjs/core';
 import type { Role } from '@repairos/contracts';
 import { fromNodeHeaders } from 'better-auth/node';
+import type { Response } from 'express';
 import { ApiException, forbidden } from '../common/errors';
 import { PrismaService } from '../prisma/prisma.service';
 import { AUTH, type Auth } from './auth';
@@ -23,7 +24,13 @@ export class AuthGuard implements CanActivate {
     if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [ctx.getHandler(), ctx.getClass()])) return true;
 
     const req = ctx.switchToHttp().getRequest<AuthedRequest>();
-    const result = await this.auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+    const { headers, response: result } = await this.auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+      returnHeaders: true,
+    });
+    // getSession can refresh the session (sliding expiry) or clear a stale cookie: pass those on.
+    const setCookies = headers.getSetCookie();
+    if (setCookies.length) ctx.switchToHttp().getResponse<Response>().append('Set-Cookie', setCookies);
     if (!result) throw new ApiException(401, 'UNAUTHENTICATED', 'Sign in required');
 
     const { user, session } = result;

@@ -8,7 +8,7 @@ export type Role = z.infer<typeof Role>;
 export const CreateShopInput = z.object({
   name: z.string().trim().min(2).max(80),
   country: CountryCode,
-  timezone: z.string().min(1).optional(), // defaults from MARKET_DEFAULTS
+  timezone: z.string().min(1).max(64).optional(), // IANA name; defaults from MARKET_DEFAULTS
   phone: z.string().trim().max(32).optional(), // any format; API normalises to E.164
   addressLine1: z.string().trim().max(120).optional(),
   city: z.string().trim().max(80).optional(),

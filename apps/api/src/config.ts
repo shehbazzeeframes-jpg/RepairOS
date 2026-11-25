@@ -10,6 +10,8 @@ export interface AppConfig {
   authSecret: string;
   /** Sign-in / sign-up / password-reset requests per IP per minute. */
   authRateLimitMax: number;
+  /** express "trust proxy" setting (TRUST_PROXY), used for client IPs in logs and rate limits. */
+  trustProxy: boolean | number | string;
   logLevel: string;
   version: string;
 }
@@ -31,22 +33,33 @@ export function readVersion(): string {
   }
 }
 
+/** express `trust proxy`: true/false, a hop count, or addresses/presets ("loopback", "10.0.0.0/8"). */
+export function parseTrustProxy(raw: string | undefined): boolean | number | string {
+  const v = (raw ?? 'loopback').trim();
+  if (v === 'true') return true;
+  if (v === 'false' || v === '') return false;
+  if (/^\d+$/.test(v)) return Number(v);
+  return v;
+}
+
+const WEAK_SECRETS = new Set(['change-me', 'changeme', 'secret', 'password']);
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  const databaseUrl = env.APP_DATABASE_URL ?? required(env, 'DATABASE_URL');
-  if (!env.APP_DATABASE_URL) {
-    console.warn('[config] APP_DATABASE_URL is not set: using DATABASE_URL, so Row-Level Security is NOT enforced.');
-  }
+  const nodeEnv = env.NODE_ENV ?? 'development';
+  // Required: the owner/superuser URL would silently switch Row-Level Security off.
+  const databaseUrl = required(env, 'APP_DATABASE_URL');
   const secret = required(env, 'BETTER_AUTH_SECRET');
-  if ((env.NODE_ENV ?? 'development') === 'production' && (secret === 'change-me' || secret.length < 32)) {
-    throw new Error('BETTER_AUTH_SECRET must be a strong secret in production');
+  if (nodeEnv !== 'test' && (WEAK_SECRETS.has(secret) || secret.length < 32)) {
+    throw new Error('BETTER_AUTH_SECRET must be at least 32 characters and not a placeholder (openssl rand -base64 32)');
   }
   return {
-    nodeEnv: env.NODE_ENV ?? 'development',
+    nodeEnv,
     port: Number(env.PORT ?? 4000),
     appUrl: (env.APP_URL ?? 'http://localhost:3000').replace(/\/$/, ''),
     databaseUrl,
     authSecret: secret,
     authRateLimitMax: Number(env.AUTH_RATE_LIMIT_MAX ?? 10),
+    trustProxy: parseTrustProxy(env.TRUST_PROXY),
     logLevel: env.LOG_LEVEL ?? 'info',
     version: readVersion(),
   };

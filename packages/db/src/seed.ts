@@ -95,6 +95,9 @@ async function seedShop(prisma: PrismaClient, s: SeedShop, passwordHash: string)
 }
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Refusing to seed demo users and shops with NODE_ENV=production');
+  }
   const prisma = new PrismaClient();
   try {
     const passwordHash = await hashPassword(PASSWORD);

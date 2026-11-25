@@ -19,7 +19,14 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO repairos_app;
 -- Tables created by later migrations (run by the same owner role) get the same grants.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO repairos_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO repairos_app;
-REVOKE ALL ON "_prisma_migrations" FROM repairos_app;
+-- Conditional: `prisma migrate dev` replays migrations in a shadow database that has no _prisma_migrations.
+DO $$
+BEGIN
+  IF to_regclass('public._prisma_migrations') IS NOT NULL THEN
+    REVOKE ALL ON "_prisma_migrations" FROM repairos_app;
+  END IF;
+END
+$$;
 
 -- Audit log is append-only for the app.
 REVOKE UPDATE, DELETE ON "audit_logs" FROM repairos_app;

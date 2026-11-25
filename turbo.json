@@ -1,5 +1,22 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "NODE_ENV",
+    "CI",
+    "PORT",
+    "LOG_LEVEL",
+    "DATABASE_URL",
+    "DATABASE_URL_TEST",
+    "APP_DATABASE_URL",
+    "APP_DATABASE_URL_TEST",
+    "REDIS_URL",
+    "BETTER_AUTH_SECRET",
+    "FIELD_ENCRYPTION_KEY",
+    "APP_URL",
+    "API_URL",
+    "AUTH_RATE_LIMIT_MAX",
+    "TRUST_PROXY"
+  ],
   "tasks": {
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"] },
     "dev": { "cache": false, "persistent": true },

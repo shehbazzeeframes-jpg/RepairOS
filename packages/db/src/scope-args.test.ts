@@ -4,9 +4,19 @@ import { scopeArgs, TenantScopeError } from './scope-args';
 const A = 'shop_a';
 
 describe('scopeArgs', () => {
-  it('leaves non-tenant models alone', () => {
-    const args = { where: { email: 'x' } };
-    expect(scopeArgs('User', 'findMany', args, A)).toBe(args);
+  it('refuses Session, Account, Verification and unclassified models', () => {
+    for (const m of ['Session', 'Account', 'Verification', 'SomethingNew']) {
+      expect(() => scopeArgs(m, 'findMany', {}, A)).toThrow(TenantScopeError);
+    }
+  });
+
+  it('limits User to reads of the current shop members', () => {
+    expect(scopeArgs('User', 'findMany', { where: { email: 'x' } }, A)).toEqual({
+      where: { email: 'x', AND: [{ memberships: { some: { shopId: A } } }] },
+    });
+    for (const op of ['create', 'update', 'delete', 'deleteMany', 'upsert']) {
+      expect(() => scopeArgs('User', op, { where: {}, data: {} }, A)).toThrow(/read-only/);
+    }
   });
 
   it('adds shopId to where for reads, keeping caller filters', () => {

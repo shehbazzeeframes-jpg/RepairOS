@@ -1,5 +1,6 @@
-import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import {
+  assertAppRole,
   createPrismaClient,
   tenantDb,
   userTx,
@@ -17,11 +18,16 @@ import { CONFIG, type AppConfig } from '../config';
  * (users/sessions/...) and health checks.
  */
 @Injectable()
-export class PrismaService implements OnModuleDestroy {
+export class PrismaService implements OnModuleInit, OnModuleDestroy {
   readonly base: PrismaClient;
 
   constructor(@Inject(CONFIG) config: AppConfig) {
     this.base = createPrismaClient(config.databaseUrl);
+  }
+
+  /** Fails startup if the connection would bypass RLS (superuser, BYPASSRLS or table owner). */
+  async onModuleInit(): Promise<void> {
+    await assertAppRole(this.base);
   }
 
   forShop(ctx: TenantContext): TenantDb {

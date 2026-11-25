@@ -27,6 +27,9 @@ jobs:
     env:
       DATABASE_URL: postgresql://repairos:repairos@localhost:5432/repairos_test
       DATABASE_URL_TEST: postgresql://repairos:repairos@localhost:5432/repairos_test
+      # Runtime role (RLS enforced). `pnpm db:migrate` creates its grants and sets this password.
+      APP_DATABASE_URL: postgresql://repairos_app:repairos_app_ci@localhost:5432/repairos_test
+      APP_DATABASE_URL_TEST: postgresql://repairos_app:repairos_app_ci@localhost:5432/repairos_test
       REDIS_URL: redis://localhost:6379
       BETTER_AUTH_SECRET: ci-only-secret-not-used-anywhere-else-000
       FIELD_ENCRYPTION_KEY: Y2ktb25seS1rZXktMzItYnl0ZXMtbG9uZy0wMDAwMDA=
@@ -43,6 +46,8 @@ jobs:
       - run: pnpm build
       - run: pnpm lint
       - run: pnpm typecheck
+      - name: Migrate database (creates repairos_app grants, sets its password)
+        run: pnpm db:migrate
       - run: pnpm test
       - name: E2E
         run: |

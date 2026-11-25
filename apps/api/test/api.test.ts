@@ -3,18 +3,22 @@ import { ApiError, HealthResponse, MeResponse, Shop } from '@repairos/contracts'
 import { PrismaClient, tenantDb } from '@repairos/db';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { agentFor, createTestApp, signUp } from './helpers';
+import { loadConfig } from '../src/config';
+import { agentFor, APP_URL, createTestApp, signUp, uniqueEmail } from './helpers';
 
 let app: NestExpressApplication;
 let appDb: PrismaClient; // connects as repairos_app, like the API
+let adminDb: PrismaClient; // table owner, for setup/assertions that must bypass RLS
 
 beforeAll(async () => {
   app = await createTestApp();
   appDb = new PrismaClient({ datasourceUrl: process.env.APP_DATABASE_URL_TEST });
+  adminDb = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL_TEST });
 });
 
 afterAll(async () => {
   await appDb?.$disconnect();
+  await adminDb?.$disconnect();
   await app?.close();
 });
 
@@ -146,7 +150,25 @@ describe('validation errors', () => {
     await signUp(agent);
     const res = await agent.post('/api/shops').set('Content-Type', 'application/json').send('{"name":');
     expect(res.status).toBe(400);
-    expect(ApiError.parse(res.body).code).toBe('VALIDATION_FAILED');
+    expect(ApiError.parse(res.body)).toEqual({ statusCode: 400, code: 'VALIDATION_FAILED', message: 'Malformed JSON body' });
+
+    // Same on the auth routes (parsed by the rate-limit layer), without parser internals.
+    const auth = await agentFor(app).post('/api/auth/sign-in/email').set('Content-Type', 'application/json').send('{"email":');
+    expect(auth.status).toBe(400);
+    expect(auth.body).toEqual({ statusCode: 400, code: 'VALIDATION_FAILED', message: 'Malformed JSON body' });
+  });
+
+  it('stores the canonical time zone and rejects unknown or offset zones', async () => {
+    const agent = agentFor(app);
+    await signUp(agent);
+    const ok = await agent.post('/api/shops').send({ name: 'TZ Shop', country: 'GB', timezone: 'europe/london' });
+    expect(ok.status).toBe(201);
+    expect(Shop.parse(ok.body).timezone).toBe('Europe/London');
+    for (const timezone of ['Mars/Olympus_Mons', '+05:00']) {
+      const bad = await agent.post('/api/shops').send({ name: 'TZ Shop', country: 'GB', timezone });
+      expect(bad.status, timezone).toBe(400);
+      expect(ApiError.parse(bad.body).issues?.[0]?.path).toEqual(['timezone']);
+    }
   });
 
   it('validates the active-shop body', async () => {
@@ -216,6 +238,52 @@ describe('tenant isolation', () => {
     expect(found).toEqual([]);
   });
 
+  it('a rollback inside db.tx discards tenant writes (atomic)', async () => {
+    const db = tenantDb(appDb, { shopId: shopA, userId: userA });
+    await expect(
+      db.tx(async (tx) => {
+        await tx.location.create({ data: { shopId: shopA, name: 'Rolled back' } });
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+    expect(await db.client.location.count({ where: { name: 'Rolled back' } })).toBe(0);
+  });
+
+  it('the scoped client does not expose $transaction or raw SQL', () => {
+    const db = tenantDb(appDb, { shopId: shopA, userId: userA });
+    const loose = db.client as unknown as Record<string, unknown>;
+    expect(() => loose.$transaction).toThrow(/db\.tx|tx\(/);
+    expect(() => loose.$executeRawUnsafe).toThrow(/not available/);
+  });
+
+  it('db.client inside db.tx runs on the transaction (sees and rolls back its writes)', async () => {
+    const db = tenantDb(appDb, { shopId: shopA, userId: userA });
+    const before = await db.client.location.count();
+    await expect(
+      db.tx(async (tx) => {
+        await db.client.location.create({ data: { shopId: shopA, name: 'Via client in tx' } });
+        expect(await tx.location.count()).toBe(before + 1);
+        expect(await db.client.location.count()).toBe(before + 1);
+        // A second tenantDb for the same shop joins the same transaction too.
+        expect(await tenantDb(appDb, { shopId: shopA }).client.location.count()).toBe(before + 1);
+        throw new Error('rollback');
+      }),
+    ).rejects.toThrow('rollback');
+    expect(await db.client.location.count()).toBe(before);
+  });
+
+  it('refuses auth tables and only reads users who are members of the shop', async () => {
+    const db = tenantDb(appDb, { shopId: shopA, userId: userA });
+    const loose = db.client as unknown as Record<string, { count: () => Promise<number> }>;
+    for (const model of ['session', 'account', 'verification']) {
+      await expect(loose[model]!.count()).rejects.toThrow(/auth table/);
+    }
+    const users = await db.client.user.findMany();
+    expect(users.map((u) => u.id)).toEqual([userA]);
+    expect(await adminDb.user.count()).toBeGreaterThan(1);
+    await expect(db.client.user.update({ where: { id: userA }, data: { name: 'x' } })).rejects.toThrow(/read-only/);
+  });
+
   it('RLS hides tenant rows from the app role without a shop context', async () => {
     expect(await appDb.taxRate.count()).toBe(0);
     expect(await appDb.shop.count()).toBe(0);
@@ -248,18 +316,83 @@ describe('tenant isolation', () => {
 });
 
 describe('auth rate limiting', () => {
-  it('returns 429 RATE_LIMITED after too many sign-in attempts', async () => {
-    const limited = await createTestApp({ authRateLimitMax: 2 });
-    try {
-      const agent = agentFor(limited);
-      const attempt = () => agent.post('/api/auth/sign-in/email').send({ email: 'nobody@test.repairos.dev', password: 'wrong-password' });
-      expect((await attempt()).status).toBe(401);
-      expect((await attempt()).status).toBe(401);
-      const third = await attempt();
-      expect(third.status).toBe(429);
-      expect(ApiError.parse(third.body).code).toBe('RATE_LIMITED');
-    } finally {
-      await limited.close();
-    }
+  let limited: NestExpressApplication;
+  beforeAll(async () => {
+    limited = await createTestApp({ authRateLimitMax: 2 });
+  });
+  afterAll(async () => {
+    await limited?.close();
+  });
+
+  const signIn = (email: string, password = 'wrong-password') =>
+    request(limited.getHttpServer()).post('/api/auth/sign-in/email').set('Origin', APP_URL).send({ email, password });
+
+  it('limits failed sign-ins per IP + normalised email', async () => {
+    expect((await signIn('victim@test.repairos.dev')).status).toBe(401);
+    expect((await signIn('VICTIM@Test.Repairos.dev')).status).toBe(401);
+    const third = await signIn('victim@test.repairos.dev');
+    expect(third.status).toBe(429);
+    expect(ApiError.parse(third.body).code).toBe('RATE_LIMITED');
+    // Another email from the same IP has its own bucket.
+    expect((await signIn('other@test.repairos.dev')).status).toBe(401);
+  });
+
+  it('does not count successful sign-ins, and sign-up has a separate bucket', async () => {
+    const email = uniqueEmail('ratelimit');
+    const up = await request(limited.getHttpServer())
+      .post('/api/auth/sign-up/email')
+      .set('Origin', APP_URL)
+      .send({ name: 'Rate Limit', email, password: 'Password123!' });
+    expect(up.status).toBe(200);
+    for (let i = 0; i < 4; i++) expect((await signIn(email, 'Password123!')).status).toBe(200);
+  });
+});
+
+describe('security hardening', () => {
+  it('refuses to boot with a superuser / owner database role', async () => {
+    await expect(createTestApp({ databaseUrl: process.env.DATABASE_URL_TEST })).rejects.toThrow(/Refusing to start/);
+  });
+
+  it('requires APP_DATABASE_URL and a strong auth secret outside tests', () => {
+    const base = { BETTER_AUTH_SECRET: 'x'.repeat(40), APP_DATABASE_URL: 'postgresql://repairos_app:pw@localhost/db' };
+    expect(() => loadConfig({ ...base, APP_DATABASE_URL: undefined, DATABASE_URL: 'postgresql://repairos@x/db' })).toThrow(/APP_DATABASE_URL/);
+    expect(() => loadConfig({ ...base, NODE_ENV: 'development', BETTER_AUTH_SECRET: 'change-me' })).toThrow(/BETTER_AUTH_SECRET/);
+    expect(() => loadConfig({ ...base, NODE_ENV: 'development', BETTER_AUTH_SECRET: 'short' })).toThrow(/BETTER_AUTH_SECRET/);
+    expect(loadConfig({ ...base, NODE_ENV: 'development' }).trustProxy).toBe('loopback');
+    expect(loadConfig({ ...base, TRUST_PROXY: '2' }).trustProxy).toBe(2);
+  });
+
+  it('keeps a safe x-request-id and replaces an unsafe one', async () => {
+    const ok = await request(app.getHttpServer()).get('/api/health').set('x-request-id', 'abc-123_DEF');
+    expect(ok.headers['x-request-id']).toBe('abc-123_DEF');
+    const bad = await request(app.getHttpServer()).get('/api/health').set('x-request-id', 'evil\tvalue {injected}');
+    expect(bad.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+    const long = await request(app.getHttpServer()).get('/api/health').set('x-request-id', 'a'.repeat(65));
+    expect(long.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('forwards the refreshed session cookie from getSession', async () => {
+    const agent = agentFor(app);
+    const { userId } = await signUp(agent);
+    // Make the session old enough that Better Auth extends it on the next request.
+    await adminDb.session.updateMany({ where: { userId }, data: { expiresAt: new Date(Date.now() + 60 * 60 * 1000) } });
+    const res = await agent.get('/api/me').expect(200);
+    const cookies = ([] as string[]).concat(res.headers['set-cookie'] ?? []);
+    expect(cookies.some((c) => c.startsWith('repairos.session_token='))).toBe(true);
+    const session = await adminDb.session.findFirst({ where: { userId } });
+    expect(session!.expiresAt.getTime()).toBeGreaterThan(Date.now() + 24 * 60 * 60 * 1000);
+  });
+
+  it('the app role cannot delete a shop, and audit history blocks owner deletes too', async () => {
+    const agent = agentFor(app);
+    await signUp(agent);
+    const shop = Shop.parse((await agent.post('/api/shops').send({ name: 'Keep Me', country: 'US' }).expect(201)).body);
+    await expect(
+      appDb.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.shop_id', ${shop.id}, true)`;
+        await tx.$executeRaw`DELETE FROM shops WHERE id = ${shop.id}`;
+      }),
+    ).rejects.toThrow(/permission denied/);
+    await expect(adminDb.shop.delete({ where: { id: shop.id } })).rejects.toThrow(/audit_logs_shopId_fkey|Foreign key/i);
   });
 });

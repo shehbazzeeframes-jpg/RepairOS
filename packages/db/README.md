@@ -67,7 +67,7 @@ Every Prisma model is classified in `src/models.ts` (a unit test fails on any un
 
 | Kind | Models | Scoped client behaviour |
 |---|---|---|
-| tenant | every model with a `shopId` field, **derived from the Prisma DMMF** (today: Location, Membership, TaxRate, AuditLog, Invitation, BusinessHours, TimeEntry, and the 12 Sprint 2 tables) | `shopId` injected/enforced |
+| tenant | every model with a `shopId` field, **derived from the Prisma DMMF** (today: Location, Membership, TaxRate, AuditLog, Invitation, BusinessHours, TimeEntry, the 12 Sprint 2 tables and `TicketIdempotencyKey`) | `shopId` injected/enforced |
 | shop | `Shop` | scoped by `id` |
 | auth | `User`, `Session`, `Account`, `Verification` | `Session`/`Account`/`Verification` throw; `User` is read-only and limited to members of the current shop |
 | global | none yet (`GLOBAL_MODELS`) | unchanged |
@@ -172,6 +172,12 @@ wrapped in its own batch transaction on its own connection). Use `db.tx` for tra
 
 Migration `20261201090000_sprint2_customers_tickets`. Read with `docs/stories/sprint2-customers-and-tickets.md` and
 `PERF.md`.
+
+Migration `20261202090000_ticket_idempotency_keys` adds `ticket_idempotency_keys` (tenant table, RLS): one row per
+(shop, user, `Idempotency-Key`) for POST /api/tickets. The API inserts it first in the check-in transaction with
+`ON CONFLICT DO NOTHING` (a concurrent duplicate waits, then finds the committed row and returns that ticket); a key
+older than `IDEMPOTENCY_WINDOW_MINUTES` is deleted and reused. Rows are small and never read after 10 minutes; a
+clean-up job can delete old rows later.
 
 ### Rules built into the schema
 

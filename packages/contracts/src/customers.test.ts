@@ -6,6 +6,8 @@ import {
   CustomerTags,
   DuplicateCheckQuery,
   EraseCustomerInput,
+  GlobalSearchQuery,
+  SearchCustomerResult,
   createCustomerSchema,
   currentConsent,
   customerDisplayName,
@@ -176,5 +178,18 @@ describe('customer queries and helpers', () => {
   it('links and filenames', () => {
     expect(whatsappLink('+923001234567')).toBe('https://wa.me/923001234567');
     expect(customerExportFilename('c1', '2026-11-25')).toBe('customer-c1-2026-11-25.json');
+  });
+});
+
+describe('R5: archived customers in check-in search', () => {
+  it('GlobalSearchQuery.includeArchived and CustomerListQuery.archived default to false', () => {
+    expect(GlobalSearchQuery.parse({ q: 'ali' }).includeArchived).toBe(false);
+    expect(GlobalSearchQuery.parse({ q: 'ali', includeArchived: 'true' }).includeArchived).toBe(true);
+    expect(CustomerListQuery.parse({}).archived).toBe(false);
+    expect(CustomerListQuery.parse({ archived: '1' }).archived).toBe(true);
+    const archivedAt = '2026-11-25T09:00:00.000Z';
+    expect(SearchCustomerResult.parse({ id: 'c', kind: 'PERSON', displayName: 'A', primaryPhone: null, email: null, archivedAt }).archivedAt).toBe(
+      archivedAt,
+    );
   });
 });

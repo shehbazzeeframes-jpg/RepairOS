@@ -33,6 +33,7 @@ export const OPTIONAL_AUTH = 'repairos:optionalAuth';
 export const SIGNED_IN = 'repairos:signedIn';
 export const PERMISSION = 'repairos:permission';
 export const SHOP_FALLBACK = 'repairos:shopFallback';
+export const SHOP_SCOPED = 'repairos:shopScoped';
 
 /** Opt a route out of the global session requirement. */
 export const Public = () => SetMetadata(IS_PUBLIC, true);
@@ -48,6 +49,12 @@ export const SignedIn = () => SetMetadata(SIGNED_IN, true);
  * Every non-public route must declare this or `@SignedIn()`: the PermissionGuard fails closed otherwise.
  */
 export const RequirePermission = (permission: Permission) => SetMetadata(PERMISSION, permission);
+
+/**
+ * Requires an active shop but no particular permission (e.g. GET /api/search, which fills each group per
+ * permission). Like @RequirePermission routes it is shop-scoped, so the X-Shop-Id check (A13) applies.
+ */
+export const ShopScoped = () => SetMetadata(SHOP_SCOPED, true);
 
 /**
  * When the session's active shop has been deactivated for this user, move the session to their oldest ACTIVE

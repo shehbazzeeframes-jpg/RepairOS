@@ -172,6 +172,7 @@ model Shop {
   ticketAccessories     TicketAccessory[]
   ticketNotes           TicketNote[]
   ticketEvents          TicketEvent[]
+  ticketIdempotencyKeys TicketIdempotencyKey[]
 
   @@map("shops")
 }
@@ -704,11 +705,12 @@ model Ticket {
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
-  issues         TicketIssue[]
-  checklistItems TicketChecklistItem[]
-  accessories    TicketAccessory[]
-  notes          TicketNote[]
-  events         TicketEvent[]
+  issues          TicketIssue[]
+  checklistItems  TicketChecklistItem[]
+  accessories     TicketAccessory[]
+  notes           TicketNote[]
+  events          TicketEvent[]
+  idempotencyKeys TicketIdempotencyKey[]
 
   @@unique([shopId, id])
   // Ticket number search / "jump to T-1042": WHERE "shopId" = $1 AND "number" = $2. Also gapless uniqueness.
@@ -833,4 +835,23 @@ model TicketEvent {
   // Timeline of a ticket, cursor-paginated: WHERE "shopId" = $1 AND "ticketId" = $2 ORDER BY "createdAt", "id".
   @@index([shopId, ticketId, createdAt, id])
   @@map("ticket_events")
+}
+
+/// Check-in idempotency (contracts IDEMPOTENCY_KEY_HEADER): one row per (shop, user, key). The API inserts it first
+/// in the ticket-create transaction (ON CONFLICT DO NOTHING waits for a concurrent duplicate), so a repeat within
+/// IDEMPOTENCY_WINDOW_MINUTES returns the ticket created the first time. An expired row for the same key is
+/// deleted and the key reused.
+model TicketIdempotencyKey {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  userId    String
+  key       String
+  /// null only inside the creating transaction (set right after the ticket insert).
+  ticketId  String?
+  ticket    Ticket?  @relation(fields: [shopId, ticketId], references: [shopId, id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([shopId, userId, key])
+  @@map("ticket_idempotency_keys")
 }

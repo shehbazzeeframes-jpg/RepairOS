@@ -1,10 +1,12 @@
 /**
- * Story §6: every Sprint 1 action writes its audit event in the same transaction as the change (one test per
+ * Story §6 (+ Sprint 2 §5.8, A12): every audit action writes its audit event in the same transaction as the change (one test per
  * action), and the read-only viewer API (list with filters + cursor, detail).
  */
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
   AUDIT_ACTION_META,
+  AUDIT_ACTIONS,
+  type TicketDetail,
   SPRINT1_AUDIT_ACTIONS,
   AuditEventDetail,
   AuditEventListResponse,
@@ -15,6 +17,7 @@ import { PrismaClient } from '@repairos/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addMember, ageInviteSends, auditOf, inviteTokenFor, ownerWithShop, type OwnerWithShop } from './fixtures';
 import { agentFor, createTestApp, signUp, uniqueEmail } from './helpers';
+import { checkInNew, statuses } from './s2';
 
 let app: NestExpressApplication;
 let adminDb: PrismaClient;
@@ -68,18 +71,39 @@ beforeAll(async () => {
   await a.patch(`/api/time-entries/${entry.id}`).send({ clockOutAt: '2026-11-02T16:00:00Z', reason: 'Stayed late' }).expect(200); // time_entry.updated
   await a.delete(`/api/time-entries/${entry.id}`).send({ reason: 'Duplicate' }).expect(204); // time_entry.deleted
   await a.get('/api/timesheets/export.csv?from=2026-11-01&to=2026-11-07').expect(200); // timesheet.exported
+
+  // Sprint 2: the 12 new actions.
+  const st = await statuses(a);
+  const t = await checkInNew(a, { firstName: 'Audrey', lastName: 'Audit', passcode: { lockType: 'PIN', value: '5555' } }); // device.passcode_changed
+  sprint2.ticket = t;
+  await a.post(`/api/tickets/${t.id}/passcode/reveal`).expect(200); // device.passcode_viewed
+  await a.post(`/api/tickets/${t.id}/cancel`).send({ reason: 'CREATED_BY_MISTAKE' }).expect(200); // ticket.cancelled
+  await a.post(`/api/tickets/${t.id}/reopen`).send({ reason: 'Mistake' }).expect(200); // ticket.reopened
+  await a.post(`/api/tickets/${t.id}/cancel`).send({ reason: 'DUPLICATE' }).expect(200);
+  await a.post(`/api/customers/${t.customer.id}/archive`).expect(200); // customer.archived
+  await a.post(`/api/customers/${t.customer.id}/restore`).expect(200); // customer.restored
+  await a.get(`/api/customers/${t.customer.id}/export`).expect(200); // customer.exported
+  await a.post(`/api/customers/${t.customer.id}/erase`).send({ confirm: 'ERASE' }).expect(200); // customer.erased
+  const status = (await a.post('/api/ticket-statuses').send({ name: 'Quality check', category: 'OPEN', colour: 'teal' }).expect(201)).body; // ticket_status.created
+  sprint2.statusId = status.id;
+  await a.patch(`/api/ticket-statuses/${status.id}`).send({ name: 'QC', notifyCustomer: true }).expect(200); // ticket_status.updated
+  const ids = Object.values(st).map((s) => s.id);
+  await a.put('/api/ticket-statuses/order').send({ ids: [status.id, ...ids] }).expect(200); // ticket_status.reordered
+  await a.patch('/api/shop/ticket-settings').send({ numberPrefix: 'R-', defaultTurnaroundDays: 3 }).expect(200); // shop.ticket_settings_updated
 });
+const sprint2 = {} as { ticket: TicketDetail; statusId: string };
 afterAll(async () => {
   await adminDb?.$disconnect();
   await app?.close();
 });
 
-describe('every Sprint 1 action writes an audit event', () => {
-  it('covers all 22 Sprint 1 actions', () => {
+describe('every audit action (22 Sprint 1 + 12 Sprint 2) writes an audit event', () => {
+  it('covers all 34 actions', () => {
     expect(SPRINT1_AUDIT_ACTIONS).toHaveLength(22);
+    expect(AUDIT_ACTIONS).toHaveLength(34);
   });
 
-  it.each(SPRINT1_AUDIT_ACTIONS.map((a) => [a]))('%s', async (action) => {
+  it.each(AUDIT_ACTIONS.map((a) => [a]))('%s', async (action) => {
     const events = await auditOf(adminDb, owner.shopId, action);
     expect(events.length, action).toBeGreaterThan(0);
     const e = events[0]!;
@@ -107,6 +131,32 @@ describe('every Sprint 1 action writes an audit event', () => {
     const archived = await owner.agent.post('/api/shop/tax-rates/does-not-exist/archive');
     expect(archived.status).toBe(404);
     expect(await adminDb.auditLog.count({ where: { shopId: owner.shopId } })).toBe(before);
+  });
+});
+
+describe('Sprint 2 audit rows (A12)', () => {
+  it('labels Customer/Device/Ticket/TicketStatus at read time ("Erased customer" after erasure); no PII or passcode', async () => {
+    const page = AuditEventListResponse.parse((await owner.agent.get(`/api/audit-events?${range}&limit=100`).expect(200)).body);
+    const label = (action: string) => page.items.find((i) => i.action === action)?.entityLabel;
+    for (const a of ['customer.archived', 'customer.restored', 'customer.exported', 'customer.erased']) expect(label(a), a).toBe('Erased customer');
+    expect(label('device.passcode_viewed')).toBe('Apple iPhone 13');
+    expect(label('device.passcode_changed')).toBe('Apple iPhone 13');
+    expect(label('ticket.cancelled')).toBe(`R-${sprint2.ticket.number}`); // prefix resolved now
+    expect(label('ticket_status.updated')).toBe('QC');
+    expect(label('ticket_status.reordered')).toBe('Audit Shop 2');
+    expect(label('shop.ticket_settings_updated')).toBe('Audit Shop 2');
+    const all = JSON.stringify(await auditOf(adminDb, owner.shopId));
+    for (const pii of ['Audrey', 'Audit Audit', sprint2.ticket.customer.phones[0]!.e164, sprint2.ticket.device.imei!, '5555']) expect(all).not.toContain(pii);
+    const settings = AuditEventDetail.parse(
+      (await owner.agent.get(`/api/audit-events/${page.items.find((i) => i.action === 'shop.ticket_settings_updated')!.id}`).expect(200)).body,
+    );
+    expect(settings).toMatchObject({ before: { numberPrefix: 'T-', defaultTurnaroundDays: 2 }, after: { numberPrefix: 'R-', defaultTurnaroundDays: 3 } });
+    const statusUpd = AuditEventDetail.parse((await owner.agent.get(`/api/audit-events/${page.items.find((i) => i.action === 'ticket_status.updated')!.id}`).expect(200)).body);
+    expect(statusUpd).toMatchObject({ before: { name: 'Quality check', notifyCustomer: false }, after: { name: 'QC', notifyCustomer: true } });
+    const groups = AuditEventListResponse.parse((await owner.agent.get(`/api/audit-events?${range}&actionGroup=customers`).expect(200)).body);
+    expect(new Set(groups.items.map((i) => i.action))).toEqual(
+      new Set(['customer.archived', 'customer.restored', 'customer.exported', 'customer.erased', 'device.passcode_viewed', 'device.passcode_changed']),
+    );
   });
 });
 

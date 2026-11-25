@@ -1,5 +1,5 @@
 /**
- * Tenant isolation for the 12 Sprint 2 tables: the scoped client and Postgres RLS both keep shop A from reading
+ * Tenant isolation for the 13 Sprint 2 tables (incl. ticket_idempotency_keys): the scoped client and Postgres RLS both keep shop A from reading
  * or writing shop B's customers, phones, consent, devices, statuses, settings, tickets and ticket children; the
  * composite foreign keys stop a shop A row from pointing at a shop B parent; the SECURITY DEFINER search and erase
  * functions only ever see the transaction's shop.
@@ -57,6 +57,7 @@ const TABLES = [
   { model: 'ticketAccessory', table: 'ticket_accessories', update: '"code" = \'BOX\'' },
   { model: 'ticketNote', table: 'ticket_notes', update: '"updatedAt" = now()' },
   { model: 'ticketEvent', table: 'ticket_events', update: null },
+  { model: 'ticketIdempotencyKey', table: 'ticket_idempotency_keys', update: '"createdAt" = now()' },
 ] as const;
 
 type Delegate = {

@@ -4,6 +4,16 @@ import { LoggerModule } from 'nestjs-pino';
 import type { Logger as PinoLogger } from 'pino';
 import { AuditController } from './audit/audit.controller';
 import { AuditService } from './audit/audit.service';
+import { CustomersController } from './customers/customers.controller';
+import { CustomersService } from './customers/customers.service';
+import { DevicesController } from './devices/devices.controller';
+import { DevicesService } from './devices/devices.service';
+import { SearchController, SearchService } from './search/search';
+import { TicketSettingsController, TicketStatusesController } from './ticket-config/ticket-config.controller';
+import { TicketConfigService } from './ticket-config/ticket-config.service';
+import { TicketQueryService } from './tickets/ticket-query.service';
+import { TicketExtrasController, TicketsController } from './tickets/tickets.controller';
+import { TicketsService } from './tickets/tickets.service';
 import { AUTH, createAuth } from './auth/auth';
 import { AuthGuard, PermissionGuard } from './auth/guards';
 import { CONFIG, type AppConfig } from './config';
@@ -36,6 +46,13 @@ export const CONTROLLERS = [
   TimesheetsController,
   TimeEntriesController,
   AuditController,
+  CustomersController,
+  DevicesController,
+  TicketStatusesController,
+  TicketSettingsController,
+  TicketsController,
+  TicketExtrasController,
+  SearchController,
   DevOutboxController,
 ];
 
@@ -67,6 +84,12 @@ export class AppModule {
         InvitesService,
         TimeclockService,
         AuditService,
+        CustomersService,
+        DevicesService,
+        TicketConfigService,
+        TicketsService,
+        TicketQueryService,
+        SearchService,
         // Order matters: AuthGuard populates req.auth, PermissionGuard reads it.
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_GUARD, useClass: PermissionGuard },

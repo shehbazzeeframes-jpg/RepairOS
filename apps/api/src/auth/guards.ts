@@ -1,9 +1,9 @@
 import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { API_ERROR_MESSAGES, hasPermission, type Permission } from '@repairos/contracts';
+import { API_ERROR_MESSAGES, hasPermission, type Permission, SHOP_ID_HEADER } from '@repairos/contracts';
 import { fromNodeHeaders } from 'better-auth/node';
 import type { Response } from 'express';
-import { ApiException, forbidden } from '../common/errors';
+import { ApiException, apiError, forbidden } from '../common/errors';
 import { type MembershipRef, PrismaService } from '../prisma/prisma.service';
 import { AUTH, type Auth } from './auth';
 import {
@@ -13,6 +13,7 @@ import {
   OPTIONAL_AUTH,
   PERMISSION,
   SHOP_FALLBACK,
+  SHOP_SCOPED,
   SIGNED_IN,
 } from './auth-context';
 
@@ -105,8 +106,22 @@ export class AuthGuard implements CanActivate {
 }
 
 /**
+ * A13 / story §8.1: the shop the page was rendered for (`X-Shop-Id`) must be the session's shop. Absent → fine
+ * (scripts, tests). Compared with the session's shop even when the user was just deactivated there, so that case
+ * still gets the "access removed" 403 rather than a 409.
+ */
+export function shopHeaderMismatch(header: string | string[] | undefined, auth: AuthContext | undefined): boolean {
+  if (header === undefined) return false;
+  const value = (Array.isArray(header) ? header[0] : header)?.trim() ?? '';
+  const sessionShop = auth?.activeShop?.shopId ?? auth?.accessRemovedShopId ?? null;
+  return value !== sessionShop;
+}
+
+/**
  * Enforces @RequirePermission(...) with the contracts matrix, and fails closed: a non-public route that declares
- * neither a permission nor @SignedIn() is refused. Runs after AuthGuard.
+ * neither a permission nor @SignedIn()/@ShopScoped() is refused. Runs after AuthGuard.
+ * Shop-scoped routes (@RequirePermission or @ShopScoped) first get the X-Shop-Id check (409 ACTIVE_SHOP_CHANGED,
+ * before the handler, so nothing is written) and echo the session's active shop in `X-Shop-Id`.
  */
 @Injectable()
 export class PermissionGuard implements CanActivate {
@@ -116,16 +131,20 @@ export class PermissionGuard implements CanActivate {
     const targets = [ctx.getHandler(), ctx.getClass()];
     if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, targets)) return true;
     const permission = this.reflector.getAllAndOverride<Permission | undefined>(PERMISSION, targets);
+    const shopScoped = !!permission || !!this.reflector.getAllAndOverride<boolean>(SHOP_SCOPED, targets);
     const signedIn = this.reflector.getAllAndOverride<boolean>(SIGNED_IN, targets);
-    if (!permission) {
+    if (!shopScoped) {
       if (signedIn) return true;
       throw forbidden('This route has no access rule');
     }
-    const auth = ctx.switchToHttp().getRequest<AuthedRequest>().auth;
+    const req = ctx.switchToHttp().getRequest<AuthedRequest>();
+    const auth = req.auth;
+    if (shopHeaderMismatch(req.headers[SHOP_ID_HEADER.toLowerCase()], auth)) throw apiError('ACTIVE_SHOP_CHANGED');
     if (!auth?.activeShop) {
       throw forbidden(auth?.accessRemovedShopId ? ACCESS_REMOVED_MESSAGE : 'Select an active shop first');
     }
-    if (!hasPermission(auth.activeShop.role, permission)) throw forbidden(API_ERROR_MESSAGES.FORBIDDEN);
+    ctx.switchToHttp().getResponse<Response>().setHeader(SHOP_ID_HEADER, auth.activeShop.shopId);
+    if (permission && !hasPermission(auth.activeShop.role, permission)) throw forbidden(API_ERROR_MESSAGES.FORBIDDEN);
     return true;
   }
 }

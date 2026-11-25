@@ -608,7 +608,7 @@ const base = {
   actor: UserRef.nullable(),
 };
 
-const reserved = (type: TimelineEventType) => z.object({ ...base, type: z.literal(type), data: z.record(z.unknown()) });
+const reserved = <T extends TimelineEventType>(type: T) => z.object({ ...base, type: z.literal(type), data: z.record(z.unknown()) });
 
 /**
  * One timeline item. Values in `before`/`after` are raw stored values (instants ISO UTC, estimate as Money, due as

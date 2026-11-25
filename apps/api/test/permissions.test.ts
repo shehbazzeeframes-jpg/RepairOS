@@ -8,7 +8,7 @@ import { hasPermission, MeResponse, type Permission, permissionsFor, type Role }
 import { PrismaClient } from '@repairos/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CONTROLLERS } from '../src/app.module';
-import { IS_PUBLIC, PERMISSION, SIGNED_IN } from '../src/auth/auth-context';
+import { IS_PUBLIC, PERMISSION, SHOP_SCOPED, SIGNED_IN } from '../src/auth/auth-context';
 import { addMember, type Member, ownerWithShop, type OwnerWithShop } from './fixtures';
 import { createTestApp } from './helpers';
 
@@ -36,7 +36,10 @@ describe('route access declarations', () => {
         if (Reflect.getMetadata(METHOD_METADATA, handler) === undefined) continue;
         routes++;
         const declared =
-          Reflect.getMetadata(IS_PUBLIC, handler) || Reflect.getMetadata(SIGNED_IN, handler) || Reflect.getMetadata(PERMISSION, handler);
+          Reflect.getMetadata(IS_PUBLIC, handler) ||
+          Reflect.getMetadata(SIGNED_IN, handler) ||
+          Reflect.getMetadata(PERMISSION, handler) ||
+          Reflect.getMetadata(SHOP_SCOPED, handler);
         if (!declared) undeclared.push(`${controller.name}.${key} (${String(Reflect.getMetadata(PATH_METADATA, handler))})`);
       }
     }

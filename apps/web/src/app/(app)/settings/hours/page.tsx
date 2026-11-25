@@ -66,7 +66,7 @@ function HoursEditor({ week }: { week: BusinessHoursWeek }) {
     onSuccess: async (saved) => {
       reset({ days: saved.days });
       showToast({ body: 'Business hours saved' });
-      await queryClient.invalidateQueries({ queryKey: qk.shopSettings });
+      await queryClient.invalidateQueries({ queryKey: qk.shopSettings(shop.id) });
     },
   });
 
@@ -146,7 +146,7 @@ function HoursEditor({ week }: { week: BusinessHoursWeek }) {
                             name={`days.${weekday}.${key}`}
                             render={({ field, fieldState }) => (
                               <TimeInput
-                                label={key === 'opensAt' ? 'Opens' : 'Closes'}
+                                label={`${label} ${key === 'opensAt' ? 'opens' : 'closes'}`}
                                 isLabelHidden
                                 width={150}
                                 increment={15}

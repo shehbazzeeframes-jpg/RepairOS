@@ -31,7 +31,7 @@ import { describeTaxDefaults, formatMoney } from '@/lib/format';
 import { COUNTRY_OPTIONS } from '@/lib/markets';
 import { errorMessage } from '@/lib/errors';
 import { meQueryKey } from '@/lib/me';
-import { qk } from '@/lib/queries';
+import { SHOP_SCOPE } from '@/lib/queries';
 import { useSessionGate } from '@/lib/session-gate';
 import { useSignOut } from '@/lib/shops';
 
@@ -124,7 +124,7 @@ function Onboarding() {
     mutationFn: (input: CreateShopInput) =>
       apiFetch('/api/shops', Shop, { method: 'POST', json: toPayload(input) }),
     onSuccess: async () => {
-      queryClient.removeQueries({ queryKey: qk.shopSettings.slice(0, 1) });
+      queryClient.removeQueries({ queryKey: [SHOP_SCOPE] });
       await queryClient.invalidateQueries({ queryKey: meQueryKey });
       router.replace('/');
     },

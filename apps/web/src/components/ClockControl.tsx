@@ -132,6 +132,7 @@ export function ClockControl({ isCompact }: { isCompact: boolean }) {
   const { me, shop } = useSession();
   const enabled = can(me.permissions, 'timeclock.self');
   const query = useTimeclock(enabled);
+  const timeclockKey = qk.timeclock(shop.id);
   const queryClient = useQueryClient();
   const showToast = useToast();
   const now = useNow();
@@ -141,7 +142,7 @@ export function ClockControl({ isCompact }: { isCompact: boolean }) {
   const skew = query.data ? Date.parse(query.data.serverNow) - query.dataUpdatedAt : 0;
 
   const optimistic = (open: boolean): TimeclockStatus | undefined => {
-    const prev = queryClient.getQueryData<TimeclockStatus>(qk.timeclock);
+    const prev = queryClient.getQueryData<TimeclockStatus>(timeclockKey);
     if (!prev) return undefined;
     const at = new Date(Date.now() + skew).toISOString();
     return {
@@ -175,14 +176,14 @@ export function ClockControl({ isCompact }: { isCompact: boolean }) {
         },
       ),
     onMutate: async (direction) => {
-      await queryClient.cancelQueries({ queryKey: qk.timeclock });
-      const previous = queryClient.getQueryData<TimeclockStatus>(qk.timeclock);
+      await queryClient.cancelQueries({ queryKey: timeclockKey });
+      const previous = queryClient.getQueryData<TimeclockStatus>(timeclockKey);
       const next = optimistic(direction === 'in');
-      if (next) queryClient.setQueryData(qk.timeclock, next);
+      if (next) queryClient.setQueryData(timeclockKey, next);
       return { previous };
     },
     onSuccess: (status, direction) => {
-      queryClient.setQueryData(qk.timeclock, status);
+      queryClient.setQueryData(timeclockKey, status);
       if (direction === 'out') {
         showToast({ body: `Clocked out. ${formatShortDuration(status.todayMinutes)} today.` });
       }
@@ -192,10 +193,10 @@ export function ClockControl({ isCompact }: { isCompact: boolean }) {
         // Another tab already did it: show the real state.
         showToast({ body: errorMessage(err) });
       } else {
-        if (context?.previous) queryClient.setQueryData(qk.timeclock, context.previous);
+        if (context?.previous) queryClient.setQueryData(timeclockKey, context.previous);
         showToast({ body: errorMessage(err), type: 'error' });
       }
-      void queryClient.invalidateQueries({ queryKey: qk.timeclock });
+      void queryClient.invalidateQueries({ queryKey: timeclockKey });
     },
   });
 
@@ -261,8 +262,11 @@ export function ClockControl({ isCompact }: { isCompact: boolean }) {
           variant: 'secondary',
           isIconOnly: isCompact,
           tooltip: isCompact ? label : undefined,
+          // The dot is decorative here: the button's name is its label alone, "Clocked in 2h 14m"
+          // (BUG-07: the dot's own label made it "Clocked in Clocked in 0m").
           icon: (
             <StatusDot
+              aria-hidden
               variant={isLong ? 'warning' : 'success'}
               label={isLong ? 'Long shift' : 'Clocked in'}
               isPulsing={!isLong}

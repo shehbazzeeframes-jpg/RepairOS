@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from './api';
 import { authClient } from './auth-client';
+import { noteMe } from './access-removed';
 import { meQueryKey } from './me';
 
 /**
@@ -39,6 +40,7 @@ export function useSignOut(redirectTo: string | null = '/sign-in') {
     await authClient.signOut();
     // Update /me in place (observers re-render as signed out), drop shop data, refresh the rest.
     queryClient.setQueryData(meQueryKey, null);
+    noteMe(null);
     queryClient.removeQueries({ queryKey: ['shop'] });
     void queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== meQueryKey[0] });
     if (redirectTo) router.replace(redirectTo);

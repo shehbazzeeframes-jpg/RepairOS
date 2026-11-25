@@ -26,3 +26,8 @@ export function useSession(): SessionContextValue {
   if (!ctx) throw new Error('useSession must be used inside the app shell');
   return ctx;
 }
+
+/** The active shop's id: part of every shop-scoped query key (see `qk` in lib/queries). */
+export function useShopId(): string {
+  return useSession().shop.id;
+}

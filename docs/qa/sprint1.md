@@ -38,6 +38,7 @@ Prerequisites: local Postgres and Redis, Chromium from `PLAYWRIGHT_BROWSERS_PATH
    # APP_URL=http://localhost:3200  API_URL=http://localhost:4100  PORT=4100
    # REDIS_URL=redis://localhost:6379/7   (own Redis DB, so another worktree's worker can't take our email jobs)
    # AUTH_RATE_LIMIT_MAX=300  SHOP_CREATE_PER_HOUR=100  INVITE_PREVIEW_RATE_LIMIT=1000   (the suite signs in a lot from one IP)
+   # DEV_OUTBOX=1   (the API serves /api/dev/outbox only with this set; the suite reads invite and reset emails there)
    pnpm install && pnpm db:migrate && pnpm db:seed
    ```
 2. Build:
@@ -48,7 +49,7 @@ Prerequisites: local Postgres and Redis, Chromium from `PLAYWRIGHT_BROWSERS_PATH
    ```
 3. Start (three terminals, or `nohup … &`):
    ```
-   (cd apps/api && pnpm start > /tmp/api.log 2>&1)       # NODE_ENV unset → /api/dev/outbox enabled
+   (cd apps/api && DEV_OUTBOX=1 pnpm start > /tmp/api.log 2>&1)   # DEV_OUTBOX=1 and NODE_ENV unset → /api/dev/outbox enabled
    (cd apps/worker && pnpm start)
    (cd apps/web && pnpm exec next start --port 3200)
    ```

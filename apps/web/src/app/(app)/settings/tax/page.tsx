@@ -41,7 +41,7 @@ import { apiFetch } from '@/lib/api';
 import { errorMessage, hasErrorCode } from '@/lib/errors';
 import { meQueryKey } from '@/lib/me';
 import { qk, useShopSettings, useTaxRates } from '@/lib/queries';
-import { useSession } from '@/lib/shop-context';
+import { useSession, useShopId } from '@/lib/shop-context';
 
 const MARKET_HINT: Record<CountryCode, string> = {
   GB: 'UK shops usually show prices including VAT.',
@@ -61,7 +61,8 @@ type RateFormOutput = z.output<typeof RateForm>;
 
 function useInvalidateTax() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: qk.taxRatesAll });
+  const shopId = useShopId();
+  return () => queryClient.invalidateQueries({ queryKey: qk.taxRatesAll(shopId) });
 }
 
 function RateDialog({
@@ -231,6 +232,7 @@ function RateDialog({
 
 function PricesIncludeTax({ value, country }: { value: boolean; country: CountryCode }) {
   const canManage = useCan()('tax.manage');
+  const shopId = useShopId();
   const queryClient = useQueryClient();
   const showToast = useToast();
   const [confirming, setConfirming] = useState<boolean | null>(null);
@@ -246,7 +248,7 @@ function PricesIncludeTax({ value, country }: { value: boolean; country: Country
         body: saved.pricesIncludeTax ? 'Prices now include tax' : 'Prices now exclude tax',
       });
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: qk.shopSettings }),
+        queryClient.invalidateQueries({ queryKey: qk.shopSettings(shopId) }),
         queryClient.invalidateQueries({ queryKey: meQueryKey }),
       ]);
     },

@@ -41,6 +41,7 @@ import { API_ERROR_MESSAGES } from '@repairos/contracts';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { ClockControl } from './ClockControl';
+import { dismissAccessRemoved, useAccessRemoved } from '@/lib/access-removed';
 import { errorMessage } from '@/lib/errors';
 import { roleLabel } from '@/lib/me';
 import { NAV_GROUPS, activeNavHref } from '@/lib/nav';
@@ -129,17 +130,18 @@ function UserMenu() {
   );
 }
 
+/** S5.5: shown when the API moved the user off a shop they lost; stays until dismissed (BUG-03). */
 function AccessRemovedBanner() {
   const { me } = useSession();
-  const [dismissed, setDismissed] = useState(false);
-  if (!me.accessRemoved || dismissed) return null;
+  const removed = useAccessRemoved(me.activeShop?.id ?? null);
+  if (!removed) return null;
   return (
     <Banner
       status="warning"
-      title={`You no longer have access to ${me.accessRemoved.shopName}.`}
+      title={`You no longer have access to ${removed.shopName}.`}
       description={`You're now working in ${me.activeShop?.name ?? 'another shop'}.`}
       isDismissable
-      onDismiss={() => setDismissed(true)}
+      onDismiss={dismissAccessRemoved}
     />
   );
 }

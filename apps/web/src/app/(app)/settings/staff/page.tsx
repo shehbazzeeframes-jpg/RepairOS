@@ -12,7 +12,7 @@ import { MoreMenu } from '@astryxdesign/core/MoreMenu';
 import { ProgressBar } from '@astryxdesign/core/ProgressBar';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
-import { Table } from '@astryxdesign/core/Table';
+import { Table, pixel, proportional } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { useToast } from '@astryxdesign/core/Toast';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
@@ -100,7 +100,7 @@ function StaffPageContent() {
     copied: boolean;
   } | null>(null);
   const query = useStaff(FILTERS[filter]);
-  const refresh = () => queryClient.invalidateQueries({ queryKey: qk.staffAll });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: qk.staffAll(shop.id) });
 
   const act = useMutation({
     mutationFn: async ({ row, action }: { row: StaffListItem; action: RowAction }) => {
@@ -248,7 +248,10 @@ function StaffPageContent() {
           <Table
             data={rows}
             idKey="id"
-            textOverflow="truncate"
+            // Wrap, not truncate (BUG-05): at 1024px names, badges and dates wrap onto a second line;
+            // only the email truncates (with a tooltip). Column floors keep the table inside the
+            // settings content width at 1024px.
+            textOverflow="wrap"
             emptyState={
               <EmptyState
                 isCompact
@@ -259,9 +262,10 @@ function StaffPageContent() {
               {
                 key: 'name',
                 header: 'Name',
+                width: proportional(3, { minWidth: 140 }),
                 renderCell: (r) => (
-                  <HStack gap={2} vAlign="center">
-                    <Text weight="medium" maxLines={1}>
+                  <HStack gap={1.5} vAlign="center" wrap="wrap">
+                    <Text weight="medium" maxLines={2} wordBreak="break-word">
                       {r.name ?? '—'}
                     </Text>
                     {r.isSelf ? <Badge variant="purple" label="You" /> : null}
@@ -271,6 +275,7 @@ function StaffPageContent() {
               {
                 key: 'email',
                 header: 'Email',
+                width: proportional(3, { minWidth: 120 }),
                 renderCell: (r) => (
                   <Text color="secondary" maxLines={1}>
                     {r.email}
@@ -280,17 +285,19 @@ function StaffPageContent() {
               {
                 key: 'role',
                 header: 'Role',
-                width: { type: 'pixel', value: 120 },
+                width: pixel(104),
                 renderCell: (r) => ROLE_LABELS[r.role],
               },
               {
                 key: 'status',
                 header: 'Status',
+                width: proportional(2, { minWidth: 112 }),
                 renderCell: (r) => <StatusCell row={r} />,
               },
               {
                 key: 'lastClockIn',
                 header: 'Last clock-in',
+                width: proportional(2, { minWidth: 112 }),
                 renderCell: (r) => {
                   if (r.kind === 'INVITE') {
                     const when = r.inviteExpiresAt ? formatLongDate(r.inviteExpiresAt, shop) : '';
@@ -327,7 +334,7 @@ function StaffPageContent() {
               {
                 key: 'actions',
                 header: <VisuallyHidden>Actions</VisuallyHidden>,
-                width: { type: 'pixel', value: 64 },
+                width: pixel(48),
                 align: 'end',
                 renderCell: (r) => {
                   const items = actionsFor(r);

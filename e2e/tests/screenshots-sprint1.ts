@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { MeResponse, TimeclockStatus } from '@repairos/contracts';
+import { MeResponse, TimeclockStatus, TimesheetResponse } from '@repairos/contracts';
 import { fileURLToPath } from 'node:url';
 import {
   AUDIT_DETAIL,
@@ -257,5 +257,71 @@ export function sprint1Screenshots() {
       await settle(page);
       await shot(page, 'dev-outbox');
     });
+
+    test('access-removed-banner', async ({ page }) => {
+      await mockApi(page, {
+        me: MeResponse.parse({
+          ...TWO_SHOPS,
+          accessRemoved: { shopId: 'shp_old', shopName: 'Phone Doctor Leeds' },
+        }),
+        handlers: appHandlers,
+      });
+      await page.goto('/');
+      await expect(
+        page.getByText('You no longer have access to Phone Doctor Leeds.'),
+      ).toBeVisible();
+      await settle(page);
+      await shot(page, 'access-removed-banner');
+    });
+  });
+
+  // Tablet width (BUG-05): tables wrap instead of cutting names and badges.
+  test.describe('sprint 1 at 1024', () => {
+    test.use({ viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1 });
+    test.beforeEach(async ({ page }) => {
+      await page.clock.setFixedTime(NOW);
+    });
+
+    const deactivatedSheet = TimesheetResponse.parse({
+      ...TIMESHEET,
+      staff: TIMESHEET.staff.map((p) =>
+        p.name === 'Sam Lee'
+          ? {
+              ...p,
+              status: 'DEACTIVATED',
+              days: p.days.map((d, i) =>
+                i === 1
+                  ? {
+                      ...d,
+                      entries: d.entries.map((e) => ({ ...e, closedReason: 'DEACTIVATED' })),
+                    }
+                  : d,
+              ),
+            }
+          : p,
+      ),
+    });
+
+    for (const [name, path, heading, extra] of [
+      ['settings-staff-1024', '/settings/staff', 'Staff', {}],
+      [
+        'settings-timesheets-1024',
+        '/settings/timesheets',
+        'Timesheets',
+        { 'GET /api/timesheets': json(deactivatedSheet) },
+      ],
+    ] as const) {
+      test(name, async ({ page }) => {
+        await mockApi(page, { me: TWO_SHOPS, handlers: { ...appHandlers, ...extra } });
+        await page.goto(path);
+        await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
+        await expect(page.getByLabel(/^Loading/)).toHaveCount(0);
+        await settle(page);
+        // The shell scrolls its content region, not the page: bring the flag badges into view.
+        if (path === '/settings/timesheets')
+          await page.getByText('Closed on deactivation').scrollIntoViewIfNeeded();
+        await page.screenshot({ path: `${OUT_DIR}${name}.png` });
+      });
+    }
   });
 }

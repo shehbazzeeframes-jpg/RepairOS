@@ -14,32 +14,56 @@ import {
 } from '@repairos/contracts';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { apiFetch } from './api';
+import { useShopId } from './shop-context';
 
-/** Query keys. Everything shop-scoped starts with 'shop' so a shop switch can drop it in one call. */
+/** First segment of every shop-scoped query key: `['shop', shopId, ...]`. */
+export const SHOP_SCOPE = 'shop';
+
+/**
+ * Query keys. Everything shop-scoped is `['shop', shopId, ...]`, so data cached for one shop can
+ * never be read under another shop's key, and a shop change can drop it all in one call.
+ */
 export const qk = {
-  shopSettings: ['shop', 'settings'] as const,
-  taxRates: (includeArchived: boolean) => ['shop', 'tax-rates', includeArchived] as const,
-  taxRatesAll: ['shop', 'tax-rates'] as const,
-  staff: (statuses: readonly StaffStatus[]) => ['shop', 'staff', statuses.join(',')] as const,
-  staffAll: ['shop', 'staff'] as const,
-  timeclock: ['shop', 'timeclock'] as const,
-  timesheets: (q: TimesheetParams) => ['shop', 'timesheets', q] as const,
-  timesheetsAll: ['shop', 'timesheets'] as const,
-  audit: (q: AuditParams) => ['shop', 'audit', q] as const,
-  auditEvent: (id: string) => ['shop', 'audit-event', id] as const,
+  shop: (shopId: string) => [SHOP_SCOPE, shopId] as const,
+  shopSettings: (shopId: string) => [SHOP_SCOPE, shopId, 'settings'] as const,
+  taxRates: (shopId: string, includeArchived: boolean) =>
+    [SHOP_SCOPE, shopId, 'tax-rates', includeArchived] as const,
+  taxRatesAll: (shopId: string) => [SHOP_SCOPE, shopId, 'tax-rates'] as const,
+  staff: (shopId: string, statuses: readonly StaffStatus[]) =>
+    [SHOP_SCOPE, shopId, 'staff', statuses.join(',')] as const,
+  staffAll: (shopId: string) => [SHOP_SCOPE, shopId, 'staff'] as const,
+  timeclock: (shopId: string) => [SHOP_SCOPE, shopId, 'timeclock'] as const,
+  timesheets: (shopId: string, q: TimesheetParams) =>
+    [SHOP_SCOPE, shopId, 'timesheets', q] as const,
+  timesheetsAll: (shopId: string) => [SHOP_SCOPE, shopId, 'timesheets'] as const,
+  audit: (shopId: string, q: AuditParams) => [SHOP_SCOPE, shopId, 'audit', q] as const,
+  auditEvent: (shopId: string, id: string) => [SHOP_SCOPE, shopId, 'audit-event', id] as const,
   invite: (token: string) => ['invite', token] as const,
 };
 
+/**
+ * True for a cached shop-scoped query that belongs to any shop other than `activeShopId`
+ * (every shop-scoped query when there is no active shop).
+ */
+export function isOtherShopQuery(
+  queryKey: readonly unknown[],
+  activeShopId: string | null,
+): boolean {
+  return queryKey[0] === SHOP_SCOPE && queryKey[1] !== activeShopId;
+}
+
 export function useShopSettings() {
+  const shopId = useShopId();
   return useQuery({
-    queryKey: qk.shopSettings,
+    queryKey: qk.shopSettings(shopId),
     queryFn: () => apiFetch('/api/shop', ShopSettingsResponse),
   });
 }
 
 export function useTaxRates(includeArchived: boolean) {
+  const shopId = useShopId();
   return useQuery({
-    queryKey: qk.taxRates(includeArchived),
+    queryKey: qk.taxRates(shopId, includeArchived),
     queryFn: () =>
       apiFetch(
         `/api/shop/tax-rates?includeArchived=${String(includeArchived)}`,
@@ -49,16 +73,18 @@ export function useTaxRates(includeArchived: boolean) {
 }
 
 export function useStaff(statuses: readonly StaffStatus[], enabled = true) {
+  const shopId = useShopId();
   return useQuery({
-    queryKey: qk.staff(statuses),
+    queryKey: qk.staff(shopId, statuses),
     queryFn: () => apiFetch(`/api/staff?status=${statuses.join(',')}`, StaffListResponse),
     enabled,
   });
 }
 
 export function useTimeclock(enabled: boolean) {
+  const shopId = useShopId();
   return useQuery({
-    queryKey: qk.timeclock,
+    queryKey: qk.timeclock(shopId),
     queryFn: () => apiFetch('/api/timeclock/me', TimeclockStatus),
     enabled,
     refetchOnWindowFocus: true,
@@ -80,8 +106,9 @@ export function timesheetSearch(q: TimesheetParams): string {
 }
 
 export function useTimesheets(q: TimesheetParams, enabled: boolean) {
+  const shopId = useShopId();
   return useQuery({
-    queryKey: qk.timesheets(q),
+    queryKey: qk.timesheets(shopId, q),
     queryFn: () => apiFetch(`/api/timesheets?${timesheetSearch(q)}`, TimesheetResponse),
     enabled,
   });
@@ -93,8 +120,9 @@ export type AuditParams = Pick<
 >;
 
 export function useAuditEvents(q: AuditParams, enabled: boolean) {
+  const shopId = useShopId();
   return useInfiniteQuery({
-    queryKey: qk.audit(q),
+    queryKey: qk.audit(shopId, q),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ from: q.from, to: q.to });
@@ -110,8 +138,9 @@ export function useAuditEvents(q: AuditParams, enabled: boolean) {
 }
 
 export function useAuditEvent(id: string | null) {
+  const shopId = useShopId();
   return useQuery({
-    queryKey: qk.auditEvent(id ?? ''),
+    queryKey: qk.auditEvent(shopId, id ?? ''),
     queryFn: () => apiFetch(`/api/audit-events/${encodeURIComponent(id ?? '')}`, AuditEventDetail),
     enabled: id !== null,
   });

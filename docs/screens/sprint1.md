@@ -52,7 +52,7 @@ Sign-in/sign-up with `?invite=<token>` send a signed-in user back to `/invite/<t
 - Empty (only archived hidden): "No active tax rates" (can't really happen, `LAST_TAX_RATE` prevents it).
 
 ### 1.3 Business hours
-- One row per weekday in `weekdayDisplayOrder(country)`: `Switch` (label hidden, "{Day} open"), day name (`Text` semibold), and when open two `TimeInput`s "Opens" "to" "Closes" (`increment={15}`, 12h for en-US, 24h for en-GB). Closed rows show "Closed" instead of the pickers.
+- One row per weekday in `weekdayDisplayOrder(country)`: `Switch` (label hidden, "{Day} open"), day name (`Text` semibold), and when open two `TimeInput`s "to" between them, labels hidden and named by day: "{Day} opens" / "{Day} closes" (`increment={15}`, 12h for en-US, 24h for en-GB). Closed rows show "Closed" instead of the pickers.
 - "Copy Monday to all weekdays" `Button` (ghost) above the rows.
 - Validate with `BusinessHoursWeek`; errors attach to the field ("Closing time must be after opening time"). Save → `PUT /api/shop/hours`, toast "Business hours saved".
 
@@ -60,7 +60,7 @@ Sign-in/sign-up with `?invite=<token>` send a signed-in user back to `/invite/<t
 - Header row: h1 "Staff", seat meter `ProgressBar` (label "Seats", `formatValueLabel` → "3 of 5 users", warning variant at the limit) + `Text` "Active users and pending invites count toward your plan.", primary "Invite staff".
 - At the limit the button is disabled with `disabledMessage` and a warning `Banner`: "Your plan includes 5 users. Extra users are $5/month; billing arrives later."
 - Filter: `SegmentedControl` "Active & invited" (default) · "Deactivated" · "All" → `status` query.
-- `Table` (`textOverflow="truncate"`): Name (name or "—", plus "You" `Badge`), Email, Role, Status (`Badge` Active success / Invited info / Expired warning / Deactivated neutral; plus "Clocked in now" `StatusDot`), Last clock-in (shop time or "Never"; invites: "Expires {date}" / "Expired on {date}"), actions `MoreMenu`.
+- `Table` (`textOverflow="wrap"`; column floors via `proportional(n, { minWidth })` so it fits the 1024px content width; only the email truncates, with a tooltip): Name (name or "—", plus "You" `Badge`), Email, Role, Status (`Badge` Active success / Invited info / Expired warning / Deactivated neutral; plus "Clocked in now" `StatusDot`), Last clock-in (shop time or "Never"; invites: "Expires {date}" / "Expired on {date}"), actions `MoreMenu`.
 - Row actions (only those allowed: `staff.manage` and `canManageRole(myRole, row.role)`, never on `isSelf`):
   - Member, active: Change role…, Deactivate… (destructive).
   - Member, deactivated: Reactivate.
@@ -73,7 +73,7 @@ Sign-in/sign-up with `?invite=<token>` send a signed-in user back to `/invite/<t
 - States: loading skeleton rows; only-me empty state "You're the only one here. Invite your team." (with the Invite button); error with Try again.
 
 ### 1.5 Timesheets
-- Filter bar (`HStack` wrap): `DateRangeInput` "Dates" with presets (This week, Last week, This month, Last month; weeks start Monday, in shop time), `maxRangeSpan={93}`; Staff `Selector` (All staff + people from `GET /api/staff?status=ACTIVE,DEACTIVATED`); "Needs review ({n})" `Switch`; "Export CSV" `Button` link to `/api/timesheets/export.csv?…` (shown with `timesheet.export`); "Add entry" (with `timesheet.edit`).
+- Filter bar (`HStack` wrap): `DateRangeInput` "Dates" with presets (This week, Last week, This month, Last month; weeks start Monday, in shop time), `maxRangeSpan={93}`; Staff `Selector` (All staff + people from `GET /api/staff?status=ACTIVE,DEACTIVATED`); "Needs review ({n})" `Switch`; "Export CSV" `Button` link to `/api/timesheets/export.csv?…` (shown with `timesheet.export`; a plain `<a download>`, never a Next `<Link>`, so it is never prefetched. A click fetches the file first and saves it; an API error shows its message in an error toast); "Add entry" (with `timesheet.edit`).
 - Range over 93 days (custom typing) shows the contract message "Choose a range of 93 days or fewer" and skips the query.
 - Summary `Table`: Staff (name + role + "Deactivated" badge), Days worked, Total (`formatDuration`, tabular). Then one `Section` per person: h2 "{name} · {total}" and an entries `Table`: Date, Clock in, Clock out (or "Still open"), Duration, Flags (`Badge` warning "Long shift" (> 14h), "Still open"; neutral "Edited" with `Tooltip` "{by} on {date}: {reason}"; "Closed on deactivation"), actions `MoreMenu` (Edit, Delete) only when `canEditTimeEntry(myRole, row.role, isMe)`.
 - **Entry dialog** (add / edit): Staff (add only), Clock in `DateTimeInput` (shop time), Clock out `DateTimeInput` (optional only for an open entry being left open), Reason `TextArea` (required, 3–200, counter). Validated with `CreateTimeEntryInput` / `UpdateTimeEntryInput`; `TIME_ENTRY_OVERLAP` shows in the dialog. **Delete** dialog asks for a reason too (`DeleteTimeEntryInput`).
@@ -89,14 +89,14 @@ Sign-in/sign-up with `?invite=<token>` send a signed-in user back to `/invite/<t
 ## 2. Clock in/out (top bar)
 - Shown for users with `timeclock.self`, left of "New ticket". Data: `GET /api/timeclock/me`; elapsed time uses the server clock (`serverNow` offset) and re-renders every 15 s.
 - Clocked out: secondary `Button` "Clock in" (clock icon). Click → optimistic "Clocked in 0m", `POST clock-in`; on `ALREADY_CLOCKED_IN` it refetches and keeps the clocked-in state; other errors roll back with an error toast and "Try again".
-- Clocked in: `DropdownMenu` button "Clocked in 2h 14m" (`StatusDot` success); menu: "Clock out", "My hours". Clock out → optimistic, toast "Clocked out. {todayMinutes} today.".
+- Clocked in: `DropdownMenu` button "Clocked in 2h 14m" (`StatusDot` success, `aria-hidden`, so the accessible name is exactly the visible text); menu: "Clock out", "My hours". Clock out → optimistic, toast "Clocked out. {todayMinutes} today.".
 - Open entry older than 14h: warning `StatusDot`, menu header `Banner` warning "Still clocked in since {day time}. Clock out and ask a manager to fix the time."
 - ≤ 900px: icon-only with tooltip.
 - **My hours** `Dialog`: two `Section`s (This week, Last week) each with a total and a compact `Table` (Date, In, Out, Duration).
 
 ## 3. User menu
 - Header: name, "{role} · {email}". Rows: Settings (when any settings page is visible), "Switch shop" `DropdownMenuGroup` with `DropdownMenuRadioGroup` of memberships ("{shop}" + role description) when there are 2+, "Create a new shop" (→ `/onboarding?new=1`; disabled with "You can own up to 3 shops for now…" when the user already owns 3), Sign out.
-- Switching calls `POST /api/me/active-shop`, replaces the cached `/me`, drops every other cached query and lands on `/`.
+- Switching calls `POST /api/me/active-shop`, replaces the cached `/me`, drops every other cached query and lands on `/`. Shop-scoped query keys are `['shop', shopId, …]`, and whenever `/me`'s active shop changes for any reason (switch, deactivation fallback, another tab; `/me` refetches on every focus) the other shops' queries are dropped and the app frame remounts, closing any open dialog or form.
 - Onboarding (`?new=1`): same form, title "Set up another shop", "Back to {current shop}" link; `SHOP_LIMIT_REACHED` shows the contract copy in the banner.
 
 ## 4. Auth extras (`login-card` frame, 400)
@@ -121,7 +121,7 @@ Sign-in/sign-up with `?invite=<token>` send a signed-in user back to `/invite/<t
 Sign-up with `?invite=`: email prefilled and `isReadOnly` ("This invite is for this email."), note "Joining {shop}", success returns to the invite. Accept → `/me` refetch → `/` with toast "Welcome to {shop}".
 
 ## 6. Access removed `/access-removed`
-`login-card` frame: h1 "You no longer have access to {shop}", "An owner or manager of {shop} removed your access. Your account still works.", buttons "Create your own shop" (primary → `/onboarding`), shop switcher list if other memberships exist, "Sign out". In-app variant (another shop is active): dismissable warning `Banner` at the top of the content "You no longer have access to {shop}.".
+`login-card` frame: h1 "You no longer have access to {shop}", "An owner or manager of {shop} removed your access. Your account still works.", buttons "Create your own shop" (primary → `/onboarding`), shop switcher list if other memberships exist, "Sign out". In-app variant (another shop is active): dismissable warning `Banner` at the top of the content "You no longer have access to {shop}.". The API returns `accessRemoved` on one `/me` only, so the web latches the first non-null value (`lib/access-removed.ts`) and shows the banner until it is dismissed or the user signs out.
 
 ## 7. Dev outbox `/dev/outbox`
 Enabled when `NODE_ENV !== 'production'` or `NEXT_PUBLIC_DEV_OUTBOX=1` (the e2e build); otherwise `notFound()`. `Layout`: start `LayoutPanel` (360) with a `List` of emails (subject, "to · time"), newest first, "Refresh"; content: subject h1, `MetadataList` (To, Sent), "Links in this email" (`List` of `Link`s; app links for `/invite/` and `/reset-password` open in this tab), then the HTML in an `<iframe sandbox="" srcDoc>` (no scripts) and the plain text in a `CodeBlock`. Empty: "No emails yet. Invites and password resets you trigger locally appear here."

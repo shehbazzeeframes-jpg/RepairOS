@@ -216,7 +216,7 @@ function ProfileEditor({ shop }: { shop: ShopProfile }) {
       reset(toForm(updated));
       showToast({ body: 'Shop details saved' });
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: qk.shopSettings }),
+        queryClient.invalidateQueries({ queryKey: qk.shopSettings(shop.id) }),
         queryClient.invalidateQueries({ queryKey: meQueryKey }),
       ]);
     },

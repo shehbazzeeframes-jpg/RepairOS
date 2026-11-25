@@ -653,3 +653,12 @@ All analyst decisions A1–A21 are **accepted** as written, with these clarifica
 | A13 | Accepted and required this sprint: the `X-Shop-Id` header is sent by the web app on every shop-scoped request; the API returns `409 ACTIVE_SHOP_CHANGED` on mismatch; requests without the header are still accepted (API clients, tests) but the web app always sends it. |
 | A15 | Accepted. Reveal is a POST (never GET), the response is `Cache-Control: no-store`, and the passcode never appears in logs, audit `before/after`, exports or the ticket timeline. |
 | Size | If the sprint slips, cut in the analyst's cut order; never cut the isolation tests, passcode security or check-in speed. |
+
+### Tech lead decisions after the Sprint 2 code review (binding)
+
+| # | Decision |
+|---|---|
+| A11-b | **Erase redacts identifiers in free text.** Ticket notes and free-text fields are kept as repair records, but every occurrence of the erased customer's names, email, address and phone numbers (E.164, national digits and common formatted forms) in ticket text columns, issue labels, note bodies, timeline event data and audit payloads is replaced with `[erased]`. Audit payloads no longer store free text at all (reason codes and ids only). |
+| A11-c | **Export is a full subject-access export.** It includes customer notes, device notes and internal ticket notes (UK/EU GDPR right of access covers internal notes about the person). Passcodes are still never exported. This replaces the earlier "export leaves out internal notes". |
+| A11-d | **Search index after erase:** the "search index must not retain erased values" clause is satisfied at query level (no table, column or query result holds the values). Dead index entries are cleared by autovacuum, as recorded in `docs/DECISIONS.md`. |
+| M2 | A warranty ticket must reference a Collected ticket for the **same device** (otherwise 409 `WARRANTY_NOT_ALLOWED`). |

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { ME_NO_SHOP, ME_WITH_SHOP, SHOP, apiError, mockApi } from './support/mock-api';
+import { selectOption } from './support/select';
 
 test('a signed-in user without a shop is sent to onboarding', async ({ page }) => {
   await mockApi(page, { me: ME_NO_SHOP });
@@ -31,20 +32,17 @@ test('onboarding validates, shows market defaults, creates the shop and opens th
   await expect(form.getByText('Select the country your shop is in')).toBeVisible();
 
   await page.getByLabel('Shop name').fill('Fix It Phones');
-  await page.getByRole('combobox', { name: 'Country' }).click();
-  await page.getByRole('option', { name: 'United Kingdom' }).click();
+  await selectOption(page, 'Country', 'United Kingdom');
   await expect(page.getByText('Prices include VAT 20%')).toBeVisible();
   await expect(page.getByText('GBP · e.g. £129.00')).toBeVisible();
 
-  await page.getByRole('combobox', { name: 'Country' }).click();
-  await page.getByRole('option', { name: 'Pakistan' }).click();
+  await selectOption(page, 'Country', 'Pakistan');
   await expect(
     page.getByText('Prices exclude tax: GST 18% on goods, Sales tax on services 16%'),
   ).toBeVisible();
   await expect(page.getByText(/PKR · e\.g\. Rs\s129$/)).toBeVisible();
 
-  await page.getByRole('combobox', { name: 'Country' }).click();
-  await page.getByRole('option', { name: 'United Kingdom' }).click();
+  await selectOption(page, 'Country', 'United Kingdom');
   await page.getByLabel('Shop phone').fill('020 7123 4567');
   await page.getByLabel('City').fill('London');
   await page.getByRole('button', { name: 'Create shop' }).click();
@@ -78,8 +76,7 @@ test('onboarding maps API validation issues onto fields', async ({ page }) => {
   await page.goto('/onboarding');
   const form = page.getByRole('form');
   await page.getByLabel('Shop name').fill('Fix It Phones');
-  await page.getByRole('combobox', { name: 'Country' }).click();
-  await page.getByRole('option', { name: 'United Kingdom' }).click();
+  await selectOption(page, 'Country', 'United Kingdom');
   // Passes the contract's client-side check, so the (mocked) API's issue is what shows.
   await page.getByLabel('Shop phone').fill('020 7123 4567');
   await page.getByRole('button', { name: 'Create shop' }).click();

@@ -13,7 +13,16 @@ const labels = (perms: ReturnType<typeof permissionsFor>) =>
 
 describe('settings nav by permission', () => {
   it('shows every settings page to owners and managers', () => {
-    const all = ['General', 'Tax', 'Business hours', 'Staff', 'Timesheets', 'Audit log'];
+    const all = [
+      'General',
+      'Tax',
+      'Business hours',
+      'Ticket statuses',
+      'Tickets',
+      'Staff',
+      'Timesheets',
+      'Audit log',
+    ];
     expect(labels(permissionsFor('OWNER'))).toEqual(all);
     expect(labels(permissionsFor('MANAGER'))).toEqual(all);
   });

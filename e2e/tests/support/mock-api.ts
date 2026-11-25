@@ -1,5 +1,12 @@
 import type { Page, Request, Route } from '@playwright/test';
-import { ApiError, MeResponse, Shop, TimeclockStatus, permissionsFor } from '@repairos/contracts';
+import {
+  ApiError,
+  DashboardSummary,
+  MeResponse,
+  Shop,
+  TimeclockStatus,
+  permissionsFor,
+} from '@repairos/contracts';
 
 /** Fixtures are parsed with the shared contracts, so a contract change breaks the mocks loudly. */
 export const USER = { id: 'usr_1', name: 'Alex Morgan', email: 'alex@fixitphones.co.uk' };
@@ -40,6 +47,22 @@ export const CLOCKED_OUT: TimeclockStatus = TimeclockStatus.parse({
   openEntry: null,
   todayMinutes: 0,
   recentEntries: [],
+});
+
+export const EMPTY_DASHBOARD: DashboardSummary = DashboardSummary.parse({
+  counts: {
+    open: 0,
+    mine: 0,
+    unassigned: 0,
+    ready: 0,
+    overdue: 0,
+    dueToday: 0,
+    openAndWaiting: 0,
+    serverNow: new Date().toISOString(),
+  },
+  myQueue: [],
+  myQueueTotal: 0,
+  unassigned: [],
 });
 
 export function apiError(statusCode: number, code: string, message: string): ApiError {
@@ -102,6 +125,8 @@ export async function mockApi(page: Page, options: MockApiOptions): Promise<Mock
           });
     }
     if (key === 'GET /api/timeclock/me') return route.fulfill({ status: 200, json: CLOCKED_OUT });
+    // Sprint 2: the dashboard every signed-in page can land on (an empty shop unless a test mocks it).
+    if (key === 'GET /api/dashboard') return route.fulfill({ status: 200, json: EMPTY_DASHBOARD });
     if (key === 'POST /api/auth/sign-out') {
       state.me = null;
       return route.fulfill({ status: 200, json: { success: true } });

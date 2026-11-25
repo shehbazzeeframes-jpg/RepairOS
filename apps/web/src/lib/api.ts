@@ -59,6 +59,16 @@ export function setRequestShopId(shopId: string | null): void {
   requestShopId = shopId;
 }
 
+export function getRequestShopId(): string | null {
+  return requestShopId;
+}
+
+/** The `X-Shop-Id` header for a path (empty for user-level routes or before the shell renders). */
+export function shopHeaderFor(path: string): Record<string, string> {
+  const shopId = isShopScopedPath(path) ? requestShopId : null;
+  return shopId ? { [SHOP_ID_HEADER]: shopId } : {};
+}
+
 /** User-level routes that never carry `X-Shop-Id` (session, auth, shop creation, invites, dev tools). */
 const NOT_SHOP_SCOPED = /^\/api\/(me(\/.*)?|auth\/.*|shops|invites\/.*|dev\/.*)$/;
 

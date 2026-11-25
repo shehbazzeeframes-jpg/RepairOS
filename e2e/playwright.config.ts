@@ -49,8 +49,6 @@ export default defineConfig({
           NEXT_TELEMETRY_DISABLED: '1',
           // The dev outbox page is a 404 in production builds; the e2e build opts in.
           NEXT_PUBLIC_DEV_OUTBOX: '1',
-          // Same for the design prototypes under /prototype (Sprint 2 check-in).
-          NEXT_PUBLIC_PROTOTYPES: '1',
         },
       },
 });

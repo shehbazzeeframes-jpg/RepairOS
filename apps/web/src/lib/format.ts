@@ -1,4 +1,9 @@
-import { MARKET_DEFAULTS, formatRate, type CountryCode, type CurrencyCode } from '@repairos/contracts';
+import {
+  MARKET_DEFAULTS,
+  formatRate,
+  type CountryCode,
+  type CurrencyCode,
+} from '@repairos/contracts';
 
 /**
  * ISO 4217 minor-unit exponent: how many minor units make one major unit in storage.

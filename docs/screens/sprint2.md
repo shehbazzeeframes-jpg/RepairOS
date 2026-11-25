@@ -4,9 +4,9 @@ Builds on `sprint0-shell.md` and `sprint1.md` (their shared rules still apply). 
 
 Astryx v0.7.17 only, tokens only. Templates and components were picked with `pnpm exec astryx build|template|component|docs` (listed per screen). The check-in page was proven with a clickable prototype first (§2.10).
 
-- **Prototype:** `/prototype/check-in` (`apps/web/src/app/(app)/prototype/check-in`, dev and e2e builds only: `isPrototypeEnabled`, a 404 in production like `/dev/outbox`).
-- **Screenshots:** `docs/screens/sprint2/checkin-*-{1440x900,1024x768}.png` (regenerate with `pnpm --filter @repairos/e2e screenshots`).
-- **Keyboard proof:** `e2e/tests/prototype-check-in.spec.ts` (keyboard-only, counts keystrokes; stable at `--repeat-each=10`).
+- **Prototype:** removed once the real page shipped (see §12); `/tickets/new` replaced it.
+- **Screenshots:** `docs/screens/sprint2/*-{1440x900,1024x768}.png` of the built pages against the mocked API (regenerate with `pnpm --filter @repairos/e2e screenshots`).
+- **Keyboard proof:** `e2e/tests/check-in.spec.ts` (keyboard-only on the real page, counts keystrokes: 7 and 49 after the search term, as in the prototype).
 
 ## 0. Shared for Sprint 2
 
@@ -377,3 +377,19 @@ h1 "Ticket statuses", intro "Rename and order the steps a repair goes through. C
 
 ## Accessibility (all screens)
 One h1 per page; status is never colour-only (`StatusBadge` icon + text; overdue `DueChip` glyph + words; note visibility icon + label); every chip group and the pattern grid are a single Tab stop with arrow keys; table row menus are labelled "Actions for {ticket|name}"; live regions: check-in summary, pattern sequence, toasts; reveal countdown is not announced every second; colours only from the theme (`StatusColour` = Astryx Badge variants).
+
+## 12. Build notes (feat/sprint2-web)
+
+What shipped and where it differs from the text above; everything else is as specified.
+
+- **Prototype route removed.** `/prototype/check-in`, its component, mock model and `isPrototypeEnabled` are gone; the helpers it proved (`focusSoon`, quick-create seeding, IMEI copy, issue filter) live in `apps/web/src/lib/focus.ts` and `lib/check-in.ts`. The keystroke budget is now proven on `/tickets/new` (returning path 7 keys after the search term, new customer + device 49).
+- **R1 / R5 call sites:** `apps/web/src/lib/contract-additions.ts` (`fetchModelSuggestions`, one box, `type`/`brand` optional; `searchCheckInCustomers`, `GET /api/customers?archived=true&limit=25`, first 8 shown). R7 needed no web change.
+- **Check-in search description:** `CustomerListItem` has no "last device", so a result shows phone (or email) and the open-ticket count instead of "{phone} · {last device}".
+- **Check-in search limit:** the list API only takes 25/50/100, so the page asks for 25 and shows 8.
+- **Version conflict copy:** on `STALE_RECORD` the Edit details dialog reads the newest timeline item (`GET …/timeline?filter=all&limit=1`) and says "This ticket was changed by {actor}." (contract `STALE_TICKET_MESSAGE` when unknown), with Reload; input is kept.
+- **Global search ↵:** the palette has no highlight until an arrow key, so ↵ with nothing highlighted opens the top result (an exact ticket number / IMEI / serial is put first): the scanner path.
+- **A13 banner:** "You're now working in {shop}. This page was reloaded." is latched in `lib/shop-changed.ts` (the shell remounts per shop). Proven by the two-tab test in `e2e/tests/sprint2-shell.spec.ts`.
+- **Tabs:** Astryx `TabList` with an `aria-label` renders a navigation of buttons; views/sections are announced that way.
+- **Dashboard overdue tile:** the number stays large with an error "Needs attention" badge next to it (Badge for counts only).
+- **Status menu:** the 's' shortcut opens the header menu (controlled `isMenuOpen`).
+- **Lists:** column floors use `proportional(1, { minWidth })` so tables fit 1024 (weight 2+ raised the floors); dates in dense tables are short ("23 Nov 2026").

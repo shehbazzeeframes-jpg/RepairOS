@@ -193,3 +193,13 @@ function hourStyle(locale: string): 'numeric' | '2-digit' {
 export function hourFormatFor(locale: string): '12h' | '24h' {
   return locale === 'en-US' ? '12h' : '24h';
 }
+
+/** Instant as a short date in shop time, e.g. "23 Nov 2026" (dense tables). */
+export function formatShortDate(iso: string, shop: ShopClock): string {
+  return new Intl.DateTimeFormat(shop.locale, {
+    timeZone: shop.timezone,
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(iso));
+}

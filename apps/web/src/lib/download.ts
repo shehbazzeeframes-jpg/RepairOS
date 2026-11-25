@@ -1,4 +1,4 @@
-import { ApiRequestError, toApiError } from './api';
+import { ApiRequestError, shopHeaderFor, toApiError } from './api';
 
 /** The file name from a Content-Disposition header (`filename*=` wins over `filename=`), or the fallback. */
 export function filenameFromDisposition(header: string | null, fallback: string): string {
@@ -24,7 +24,10 @@ export function filenameFromDisposition(header: string | null, fallback: string)
 export async function downloadFile(path: string, fallbackName: string): Promise<string> {
   let res: Response;
   try {
-    res = await fetch(path, { credentials: 'include', headers: { Accept: 'text/csv, */*' } });
+    res = await fetch(path, {
+      credentials: 'include',
+      headers: { Accept: 'text/csv, application/json, */*', ...shopHeaderFor(path) },
+    });
   } catch {
     throw new ApiRequestError({
       statusCode: 0,

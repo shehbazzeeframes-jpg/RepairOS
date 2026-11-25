@@ -1,8 +1,15 @@
-import type { Metadata } from 'next';
-import { ComingSoon } from '@/components/ComingSoon';
+'use client';
 
-export const metadata: Metadata = { title: 'Customers' };
+import { Suspense } from 'react';
+import { CustomerListPage } from '@/components/customers/CustomerListPage';
+import { RequirePermission } from '@/components/RequirePermission';
 
 export default function CustomersPage() {
-  return <ComingSoon href="/customers" />;
+  return (
+    <RequirePermission permission="customers.view">
+      <Suspense>
+        <CustomerListPage />
+      </Suspense>
+    </RequirePermission>
+  );
 }

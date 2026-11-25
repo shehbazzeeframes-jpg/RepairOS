@@ -21,7 +21,7 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from '@astryxdesign/core/DropdownMenu';
-import { useMediaQuery } from '@astryxdesign/core/hooks';
+import { useHotkeys, useMediaQuery } from '@astryxdesign/core/hooks';
 import { Icon } from '@astryxdesign/core/Icon';
 import { NavIcon } from '@astryxdesign/core/NavIcon';
 import { SideNav, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav';
@@ -41,11 +41,13 @@ import { API_ERROR_MESSAGES } from '@repairos/contracts';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { ClockControl } from './ClockControl';
+import { CommandSearch } from './CommandSearch';
 import { dismissAccessRemoved, useAccessRemoved } from '@/lib/access-removed';
 import { errorMessage } from '@/lib/errors';
 import { roleLabel } from '@/lib/me';
 import { NAV_GROUPS, activeNavHref } from '@/lib/nav';
-import { hiddenMainNav, visibleSettingsNav } from '@/lib/permissions';
+import { can, hiddenMainNav, visibleSettingsNav } from '@/lib/permissions';
+import { dismissShopChanged, useShopChanged } from '@/lib/shop-changed';
 import { useSession } from '@/lib/shop-context';
 import { MAX_OWNED_SHOPS, ownedShopCount, useSignOut, useSwitchShop } from '@/lib/shops';
 
@@ -146,6 +148,28 @@ function AccessRemovedBanner() {
   );
 }
 
+/**
+ * A13: another tab switched shop and this one was reloaded under the new shop (the shell remounts,
+ * so the banner's state is a module latch, see lib/shop-changed).
+ */
+function ShopChangedBanner() {
+  const { shop } = useSession();
+  const changed = useShopChanged(shop.id);
+  if (!changed) return null;
+  return (
+    <Banner
+      status="warning"
+      title={`You're now working in ${shop.name}. This page was reloaded.`}
+      description="You switched shop in another tab. Nothing was saved to the other shop."
+      isDismissable
+      onDismiss={dismissShopChanged}
+    />
+  );
+}
+
+/** Pages with their own search box: "/" focuses that box instead of the palette (spec §0.3). */
+const OWN_SEARCH = ['/tickets', '/tickets/new', '/customers'];
+
 export function AppFrame({ children }: { children: ReactNode }) {
   const { me, shop } = useSession();
   const pathname = usePathname();
@@ -155,8 +179,23 @@ export function AppFrame({ children }: { children: ReactNode }) {
   // null = follow the viewport; a boolean = the user's explicit choice via the toggle.
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
   const isCollapsed = userCollapsed ?? isNarrow;
-  const [search, setSearch] = useState('');
+  const router = useRouter();
+  const [searchOpen, setSearchOpen] = useState(false);
   const hidden = hiddenMainNav(me.permissions);
+  const canCreate = can(me.permissions, 'tickets.create');
+  useHotkeys([
+    { keys: 'mod+k', allowInInputs: true, onPress: () => setSearchOpen(true) },
+    {
+      keys: '/',
+      onPress: () => setSearchOpen(true),
+      isDisabled: OWN_SEARCH.includes(pathname) || searchOpen,
+    },
+    {
+      keys: 'n',
+      onPress: () => router.push('/tickets/new'),
+      isDisabled: !canCreate || pathname === '/tickets/new' || searchOpen,
+    },
+  ]);
 
   return (
     <AppShell
@@ -178,22 +217,32 @@ export function AppFrame({ children }: { children: ReactNode }) {
               isLabelHidden
               placeholder="Search tickets, customers, IMEI…"
               startIcon="search"
-              value={search}
-              onChange={setSearch}
+              value=""
+              onChange={(v) => v && setSearchOpen(true)}
+              onClick={() => setSearchOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setSearchOpen(true);
+                }
+              }}
               width={isNarrow ? 260 : 380}
               enterKeyHint="search"
+              autoComplete="off"
             />
           }
           endContent={
             <>
               <ClockControl isCompact={isCompact} />
-              <Button
-                label="New ticket"
-                variant="primary"
-                icon={<Icon icon={PlusIcon} />}
-                isIconOnly={isCompact}
-                href="/tickets"
-              />
+              {canCreate ? (
+                <Button
+                  label="New ticket"
+                  variant="primary"
+                  icon={<Icon icon={PlusIcon} />}
+                  isIconOnly={isCompact}
+                  href="/tickets/new"
+                />
+              ) : null}
               <UserMenu />
             </>
           }
@@ -229,7 +278,9 @@ export function AppFrame({ children }: { children: ReactNode }) {
     >
       <VStack gap={6}>
         <AccessRemovedBanner />
+        <ShopChangedBanner />
         {children}
+        <CommandSearch isOpen={searchOpen} onOpenChange={setSearchOpen} />
       </VStack>
     </AppShell>
   );

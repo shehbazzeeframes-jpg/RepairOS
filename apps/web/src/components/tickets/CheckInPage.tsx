@@ -109,6 +109,7 @@ import {
   firstEmptyQuickField,
   imeiError,
   isWorthDrafting,
+  phoneError,
   looksLikeImei,
   newIdempotencyKey,
   readDraft,
@@ -363,6 +364,9 @@ function CheckInForm({
   );
   const [issueFilter, setIssueFilter] = useState('');
   const [showErrors, setShowErrors] = useState(false);
+  // Fields the person has typed in and left: their errors show from then on (spec §2.3 "on blur",
+  // BUG-01/04). Focus passing through an empty field doesn't count.
+  const [blurred, setBlurred] = useState<{ phone?: boolean; imei?: boolean }>({});
   const [serverIssues, setServerIssues] = useState<Record<string, string>>({});
   const [showTime, setShowTime] = useState(!!state.dueTime);
   const [restoredNotice, setRestoredNotice] = useState(false);
@@ -418,6 +422,7 @@ function CheckInForm({
   const deviceType: DeviceTypeValue = devicePickNow?.type ?? (isNewDevice ? nd.type : 'PHONE');
   const checklistItems = CHECKLIST_ITEMS_BY_DEVICE_TYPE[deviceType];
   const nc = state.newCustomer;
+  const phoneProblem = nc ? phoneError(nc.phone, ctx?.country ?? shop.country) : null;
   const customerName = state.customer
     ? state.customer.displayName
     : nc
@@ -627,6 +632,12 @@ function CheckInForm({
     const ok = nc.firstName.trim() && (nc.phone.trim() || nc.email.trim());
     if (!ok) {
       setShowErrors(true);
+      return;
+    }
+    if (phoneError(nc.phone, ctx?.country ?? shop.country)) {
+      // An invalid number would only fail at Create (BUG-01): stop here, on the field.
+      setBlurred((b) => ({ ...b, phone: true }));
+      focusField(customerRef.current, 'Phone');
       return;
     }
     set({ customerDone: true });
@@ -992,18 +1003,22 @@ function CheckInForm({
                 inputMode="tel"
                 value={nc.phone}
                 onChange={(v) => set({ newCustomer: { ...nc, phone: v } })}
+                onBlur={() => nc.phone.trim() && setBlurred((b) => ({ ...b, phone: true }))}
                 onEnter={confirmNewCustomer}
                 description="Mobile, for repair updates"
                 status={
                   field('newCustomer.phones.0.number')
                     ? { type: 'error', message: field('newCustomer.phones.0.number') }
-                    : (showErrors && !nc.phone.trim() && !nc.email.trim()) ||
-                        field('newCustomer.phones')
-                      ? {
-                          type: 'error',
-                          message: field('newCustomer.phones') ?? 'Add a phone number or an email',
-                        }
-                      : undefined
+                    : phoneProblem && (blurred.phone || showErrors)
+                      ? { type: 'error', message: phoneProblem }
+                      : (showErrors && !nc.phone.trim() && !nc.email.trim()) ||
+                          field('newCustomer.phones')
+                        ? {
+                            type: 'error',
+                            message:
+                              field('newCustomer.phones') ?? 'Add a phone number or an email',
+                          }
+                        : undefined
                 }
               />
               <TextInput
@@ -1296,6 +1311,7 @@ function CheckInForm({
                   description="Scan it, or dial *#06#"
                   value={nd.imei}
                   onChange={(imei) => setNewDevice({ imei })}
+                  onBlur={() => nd.imei.trim() && setBlurred((b) => ({ ...b, imei: true }))}
                   // A scanner ends with Enter: move on to Lock instead of submitting.
                   onEnter={() =>
                     focusIn(
@@ -1306,7 +1322,8 @@ function CheckInForm({
                   status={
                     field('newDevice.imei')
                       ? { type: 'error', message: field('newDevice.imei') }
-                      : imeiProblem && (showErrors || nd.imei.replace(/\D/g, '').length >= 15)
+                      : imeiProblem &&
+                          (showErrors || blurred.imei || nd.imei.replace(/\D/g, '').length >= 15)
                         ? { type: 'error', message: imeiProblem }
                         : undefined
                   }

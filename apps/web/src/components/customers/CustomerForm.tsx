@@ -466,6 +466,9 @@ export function CustomerForm({ customer }: { customer: CustomerDetail | null }) 
                           const e164 = normalizePhone(field.value, shop.country);
                           if (e164) field.onChange(formatPhone(e164, shop.country));
                           field.onBlur();
+                          // CU1.2 / spec §2.3: an invalid number is flagged when leaving the field.
+                          if (field.value.trim() || fieldState.error)
+                            void form.trigger(`phones.${i}.number`);
                         }}
                         status={errorStatus(fieldState.error?.message)}
                       />

@@ -14,6 +14,7 @@ import {
   isWorthDrafting,
   looksLikeImei,
   newIdempotencyKey,
+  phoneError,
   readDraft,
   seedFromTyped,
   writeDraft,
@@ -192,6 +193,13 @@ describe('check-in search helpers', () => {
     expect(imeiError('35693803564380')).toMatch(/IMEI has 15 digits$/);
     expect(looksLikeImei('35-693803-564380-9')).toBe(true);
     expect(looksLikeImei('07400 123456')).toBe(false);
+  });
+
+  it('flags an invalid phone with the contract copy (BUG-01)', () => {
+    expect(phoneError('', 'GB')).toBeNull();
+    expect(phoneError('07400 900123', 'GB')).toBeNull();
+    expect(phoneError('020 1234', 'GB')).toBe('Enter a valid phone number');
+    expect(phoneError('(212) 555-0142', 'US')).toBeNull();
   });
 
   it('filters issue chips by word prefix first', () => {

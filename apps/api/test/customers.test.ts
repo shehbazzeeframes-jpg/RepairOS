@@ -46,7 +46,7 @@ describe('customers (CU1–CU5)', () => {
       firstName: ' Ali ',
       lastName: 'Khan',
       email: 'ALI@Example.COM',
-      phones: [{ number: '(212) 200-1111' }, { number: '+44 7911 123456', label: 'WORK', isWhatsapp: true }],
+      phones: [{ number: '(212) 200-1111' }, { number: '+44 7400 123456', label: 'WORK', isWhatsapp: true }],
       tags: ['VIP', 'vip', 'School'],
       consents: [{ channel: 'SMS', state: 'GRANTED', source: 'IN_STORE_SIGNED' }],
     });
@@ -66,8 +66,8 @@ describe('customers (CU1–CU5)', () => {
     const badPhone = await owner.agent.post('/api/customers').send({ firstName: 'X', phones: [{ number: '12' }] });
     expect(badPhone.body.issues[0].path).toEqual(['phones', 0, 'number']);
     const pk = await ownerWithShop(app, { country: 'PK' });
-    const pkc = await create({ firstName: 'Bilal', phones: [{ number: '0300-1234567' }] }, pk.agent);
-    expect(pkc).toMatchObject({ primaryPhone: '+923001234567', preferredChannel: 'WHATSAPP' });
+    const pkc = await create({ firstName: 'Bilal', phones: [{ number: '0300-7654321' }] }, pk.agent);
+    expect(pkc).toMatchObject({ primaryPhone: '+923007654321', preferredChannel: 'WHATSAPP' });
   });
 
   it('duplicate check: phone in any format or email, incl. archived, never erased, excludeId; up to 3 + more', async () => {

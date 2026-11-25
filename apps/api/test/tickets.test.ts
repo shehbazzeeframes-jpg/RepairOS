@@ -531,9 +531,9 @@ describe('due dates in the shop timezone with DST (DU1, A16)', () => {
     await shop.agent.patch('/api/shop/ticket-settings').send({ defaultTurnaroundDays: 0 }).expect(200);
     const ctx = CheckInContext.parse((await shop.agent.get('/api/tickets/check-in-context').expect(200)).body);
     expect(ctx.defaultTurnaroundDays).toBe(0);
-    const t = await checkInNew(shop.agent, { phone: '+447911123456', extra: { dueDate: '2027-03-29' } }); // Monday after BST starts
+    const t = await checkInNew(shop.agent, { phone: '+447400123457', extra: { dueDate: '2027-03-29' } }); // Monday after BST starts
     expect(t.dueAt).toBe('2027-03-29T18:00:00.000Z'); // 19:00 BST
-    const t2 = await checkInNew(shop.agent, { phone: '+447911123457', extra: { dueDate: '2027-03-26' } }); // Friday, GMT
+    const t2 = await checkInNew(shop.agent, { phone: '+447400123458', extra: { dueDate: '2027-03-26' } }); // Friday, GMT
     expect(t2.dueAt).toBe('2027-03-26T19:00:00.000Z');
   });
 });

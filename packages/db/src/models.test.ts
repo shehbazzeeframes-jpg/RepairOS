@@ -25,6 +25,7 @@ describe('model classification', () => {
       'TicketAccessory',
       'TicketChecklistItem',
       'TicketEvent',
+      'TicketIdempotencyKey',
       'TicketIssue',
       'TicketNote',
       'TicketStatus',

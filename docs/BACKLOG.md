@@ -44,3 +44,7 @@ mismatched responses) and the two-tab Playwright test.
 *Source: Sprint 1 web fixes.* Playwright runs with `reducedMotion: 'reduce'` and picks Astryx `Selector` options
 through `selectOption()` (`e2e/tests/support/select.ts`): waits for the listbox and the option, clicks, then checks
 the trigger shows the choice. `--repeat-each=50 --retries=0` on `onboarding.spec.ts`: 200/200 passed.
+
+### Clean up expired ticket idempotency keys (Sprint 3)
+*Source: Sprint 2 API.*
+Expired `ticket_idempotency_keys` rows are only replaced when the same key is reused. Add a daily worker job that deletes rows older than the key TTL.

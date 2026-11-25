@@ -7,7 +7,7 @@ import { IsoDateTime, LocalDate, daysInRange } from './common';
  */
 
 /** The 22 Sprint 1 audit actions. */
-export const AUDIT_ACTIONS = [
+export const SPRINT1_AUDIT_ACTIONS = [
   'shop.created',
   'shop.updated',
   'shop.tax_settings_updated',
@@ -32,13 +32,64 @@ export const AUDIT_ACTIONS = [
   'timesheet.exported',
 ] as const;
 
+/**
+ * The 12 Sprint 2 audit actions (story §5.8, decision A12). No personal data in before/after for customer and
+ * device events (counts and ids only); passcode values never appear anywhere (A15).
+ * - `customer.archived` / `customer.restored`: before/after `{ archivedAt }`.
+ * - `customer.exported`: after `{ phones, devices, tickets, consentEvents }` (counts).
+ * - `customer.erased`: after `{ phones, devices, tickets, consentEvents, notesKept }` (counts only).
+ * - `device.passcode_viewed`: after `{ deviceId, ticketId }`.
+ * - `device.passcode_changed`: before/after `{ lockType }` (never the value).
+ * - `ticket.cancelled`: after `{ statusId, reason, note, returnedConfirmed }`.
+ * - `ticket.reopened`: before `{ statusId }`, after `{ statusId, reason }`.
+ * - `ticket_status.created`: after = the new status; `ticket_status.updated`: changed fields (name, category, colour,
+ *   notifyCustomer, isHidden, requiresNote) before/after; `ticket_status.reordered` (entity Shop): `{ order: id[] }`.
+ * - `shop.ticket_settings_updated` (entity Shop): changed settings before/after.
+ */
+export const SPRINT2_AUDIT_ACTIONS = [
+  'customer.archived',
+  'customer.restored',
+  'customer.exported',
+  'customer.erased',
+  'device.passcode_viewed',
+  'device.passcode_changed',
+  'ticket.cancelled',
+  'ticket.reopened',
+  'ticket_status.created',
+  'ticket_status.updated',
+  'ticket_status.reordered',
+  'shop.ticket_settings_updated',
+] as const;
+
+/** Every audit action (Sprint 1 then Sprint 2). */
+export const AUDIT_ACTIONS = [...SPRINT1_AUDIT_ACTIONS, ...SPRINT2_AUDIT_ACTIONS] as const;
+
 export const AuditAction = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditAction>;
 
-export const AuditEntityType = z.enum(['Shop', 'TaxRate', 'Invitation', 'Membership', 'TimeEntry']);
+export const AuditEntityType = z.enum([
+  'Shop',
+  'TaxRate',
+  'Invitation',
+  'Membership',
+  'TimeEntry',
+  'Customer',
+  'Device',
+  'Ticket',
+  'TicketStatus',
+]);
 export type AuditEntityType = z.infer<typeof AuditEntityType>;
 
-export const AuditActionGroup = z.enum(['shop_settings', 'tax', 'business_hours', 'staff', 'timesheets']);
+export const AuditActionGroup = z.enum([
+  'shop_settings',
+  'tax',
+  'business_hours',
+  'staff',
+  'timesheets',
+  'customers',
+  'tickets',
+  'ticket_settings',
+]);
 export type AuditActionGroup = z.infer<typeof AuditActionGroup>;
 
 export const AUDIT_ACTION_GROUP_LABELS: Record<AuditActionGroup, string> = {
@@ -47,6 +98,9 @@ export const AUDIT_ACTION_GROUP_LABELS: Record<AuditActionGroup, string> = {
   business_hours: 'Business hours',
   staff: 'Staff & invites',
   timesheets: 'Timesheets',
+  customers: 'Customers & privacy',
+  tickets: 'Tickets',
+  ticket_settings: 'Ticket settings',
 };
 
 export const AUDIT_ACTION_META: Record<AuditAction, { label: string; group: AuditActionGroup; entityType: AuditEntityType }> = {
@@ -72,6 +126,18 @@ export const AUDIT_ACTION_META: Record<AuditAction, { label: string; group: Audi
   'time_entry.deleted': { label: 'Deleted time entry', group: 'timesheets', entityType: 'TimeEntry' },
   'time_entry.auto_closed': { label: 'Closed time entry on deactivation', group: 'timesheets', entityType: 'TimeEntry' },
   'timesheet.exported': { label: 'Exported timesheet', group: 'timesheets', entityType: 'Shop' },
+  'customer.archived': { label: 'Archived customer', group: 'customers', entityType: 'Customer' },
+  'customer.restored': { label: 'Restored customer', group: 'customers', entityType: 'Customer' },
+  'customer.exported': { label: 'Exported customer data', group: 'customers', entityType: 'Customer' },
+  'customer.erased': { label: 'Erased customer', group: 'customers', entityType: 'Customer' },
+  'device.passcode_viewed': { label: 'Viewed device passcode', group: 'customers', entityType: 'Device' },
+  'device.passcode_changed': { label: 'Changed device passcode', group: 'customers', entityType: 'Device' },
+  'ticket.cancelled': { label: 'Cancelled ticket', group: 'tickets', entityType: 'Ticket' },
+  'ticket.reopened': { label: 'Reopened ticket', group: 'tickets', entityType: 'Ticket' },
+  'ticket_status.created': { label: 'Added ticket status', group: 'ticket_settings', entityType: 'TicketStatus' },
+  'ticket_status.updated': { label: 'Edited ticket status', group: 'ticket_settings', entityType: 'TicketStatus' },
+  'ticket_status.reordered': { label: 'Reordered ticket statuses', group: 'ticket_settings', entityType: 'Shop' },
+  'shop.ticket_settings_updated': { label: 'Changed ticket settings', group: 'ticket_settings', entityType: 'Shop' },
 };
 
 export function auditActionsInGroup(group: AuditActionGroup): AuditAction[] {
@@ -122,7 +188,10 @@ export const AuditEventSummary = z.object({
   actor: AuditActor.nullable(),
   entityType: AuditEntityType,
   entityId: z.string(),
-  /** e.g. "Sam Lee" (Membership), "VAT" (TaxRate), "sam@x.com" (Invitation); null when not resolvable. */
+  /**
+   * e.g. "Sam Lee" (Membership), "VAT" (TaxRate), "sam@x.com" (Invitation), "Ali Khan" / "Erased customer"
+   * (Customer, resolved at read time so erased names never survive), "iPhone 13" (Device), "T-1042" (Ticket), "In repair" (TicketStatus); null when not resolvable.
+   */
   entityLabel: z.string().nullable(),
 });
 export type AuditEventSummary = z.infer<typeof AuditEventSummary>;

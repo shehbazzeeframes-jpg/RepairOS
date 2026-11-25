@@ -5,7 +5,7 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
   AUDIT_ACTION_META,
-  AUDIT_ACTIONS,
+  SPRINT1_AUDIT_ACTIONS,
   AuditEventDetail,
   AuditEventListResponse,
   type StaffListItem,
@@ -75,11 +75,11 @@ afterAll(async () => {
 });
 
 describe('every Sprint 1 action writes an audit event', () => {
-  it('covers all 22 actions', () => {
-    expect(AUDIT_ACTIONS).toHaveLength(22);
+  it('covers all 22 Sprint 1 actions', () => {
+    expect(SPRINT1_AUDIT_ACTIONS).toHaveLength(22);
   });
 
-  it.each(AUDIT_ACTIONS.map((a) => [a]))('%s', async (action) => {
+  it.each(SPRINT1_AUDIT_ACTIONS.map((a) => [a]))('%s', async (action) => {
     const events = await auditOf(adminDb, owner.shopId, action);
     expect(events.length, action).toBeGreaterThan(0);
     const e = events[0]!;

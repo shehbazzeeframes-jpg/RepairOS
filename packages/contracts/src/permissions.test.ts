@@ -4,6 +4,7 @@ import {
   ROLE_PERMISSIONS,
   Role,
   SPRINT1_ENFORCED_PERMISSIONS,
+  SPRINT2_ENFORCED_PERMISSIONS,
   canEditTimeEntry,
   canManageRole,
   hasPermission,
@@ -71,6 +72,18 @@ describe('permission matrix', () => {
 
   it('Sprint 1 enforces the 10 keys marked S1 in the story', () => {
     expect(SPRINT1_ENFORCED_PERMISSIONS).toHaveLength(10);
+  });
+
+  it('Sprint 2 enforces the 10 keys of story §0 with the grants in its table (no new keys)', () => {
+    expect(SPRINT2_ENFORCED_PERMISSIONS).toHaveLength(10);
+    const grants = (r: 'OWNER' | 'MANAGER' | 'FRONT_DESK' | 'TECHNICIAN') =>
+      SPRINT2_ENFORCED_PERMISSIONS.filter((p) => hasPermission(r, p));
+    expect(grants('OWNER')).toEqual([...SPRINT2_ENFORCED_PERMISSIONS]);
+    expect(grants('MANAGER')).toEqual([...SPRINT2_ENFORCED_PERMISSIONS]);
+    expect(grants('FRONT_DESK')).toEqual([
+      'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.cancel', 'tickets.view_passcode', 'customers.view', 'customers.manage',
+    ]);
+    expect(grants('TECHNICIAN')).toEqual(['tickets.view', 'tickets.edit', 'tickets.view_passcode', 'customers.view']);
   });
 });
 

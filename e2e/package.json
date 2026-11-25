@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "playwright test --trace off",
+    "test": "playwright test --trace off --project=chromium",
     "screenshots": "playwright test --trace off --project=screenshots",
     "typecheck": "tsc --noEmit"
   },

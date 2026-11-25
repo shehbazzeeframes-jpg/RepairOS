@@ -1,0 +1,10 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      "cache": false,
+      "passThroughEnv": ["PLAYWRIGHT_BROWSERS_PATH", "CI", "E2E_PORT", "E2E_BASE_URL", "HOME"]
+    }
+  }
+}

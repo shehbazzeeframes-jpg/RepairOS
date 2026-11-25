@@ -5,6 +5,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { toNodeHandler } from 'better-auth/node';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import helmet from 'helmet';
+import { IDEMPOTENCY_KEY_HEADER, SHOP_ID_HEADER } from '@repairos/contracts';
 import { Logger } from 'nestjs-pino';
 import { type DestinationStream, pino } from 'pino';
 import { pinoHttp } from 'pino-http';
@@ -68,7 +69,12 @@ export async function createApp(config: AppConfig, options: CreateAppOptions = {
     }),
   );
   app.use(helmet());
-  app.enableCors({ origin: config.appUrl, credentials: true });
+  app.enableCors({
+    origin: config.appUrl,
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'X-Request-Id', SHOP_ID_HEADER, IDEMPOTENCY_KEY_HEADER],
+    exposedHeaders: [SHOP_ID_HEADER, 'X-Request-Id', 'Content-Disposition'],
+  });
   app.setGlobalPrefix('api');
   app.useGlobalFilters(new ApiErrorFilter());
 

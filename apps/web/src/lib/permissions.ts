@@ -12,6 +12,8 @@ export const SETTINGS_NAV: readonly SettingsNavItem[] = [
   { href: '/settings/general', label: 'General', permission: 'settings.view' },
   { href: '/settings/tax', label: 'Tax', permission: 'settings.view' },
   { href: '/settings/hours', label: 'Business hours', permission: 'settings.view' },
+  { href: '/settings/statuses', label: 'Ticket statuses', permission: 'statuses.manage' },
+  { href: '/settings/tickets', label: 'Tickets', permission: 'settings.view' },
   { href: '/settings/staff', label: 'Staff', permission: 'staff.view' },
   { href: '/settings/timesheets', label: 'Timesheets', permission: 'timesheet.view' },
   { href: '/settings/audit', label: 'Audit log', permission: 'audit.view' },

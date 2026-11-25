@@ -43,8 +43,8 @@ import { CONFIG, type AppConfig } from '../config';
 import { insertCustomer } from '../customers/customer-write';
 import { insertDevice, setDevicePasscode } from '../devices/devices.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { deletePasscodeOnClose } from '../repair/passcode';
-import { loadShopInfo, refreshCustomerCounters, type ShopInfo, ticketDetail, userRefs } from '../repair/read';
+import { deletePasscodeOfReleasedDevice, deletePasscodeOnClose, lockDevice } from '../repair/passcode';
+import { loadShopInfo, lockCustomers, refreshCustomerCounters, type ShopInfo, ticketDetail, userRefs } from '../repair/read';
 import { toNoteDto } from './ticket-query.service';
 
 /** Output of contracts `UpdateTicketInput` (the controller validates with it). */
@@ -167,6 +167,8 @@ export class TicketsService {
         deviceId = await insertDevice(tx, this.ctx(actor), customerId, input.newDevice);
         deviceType = input.newDevice.type;
       } else {
+        // H1: same lock as a close of another ticket of this device, so that close sees this new ticket.
+        await lockDevice(tx, input.deviceId!);
         const d = await tx.device.findFirst({ where: { id: input.deviceId! }, select: { id: true, customerId: true, type: true, lockType: true, passcodeKeyVersion: true } });
         if (!d) throw notFound();
         if (d.customerId !== customerId) throw validationFailed([{ path: ['deviceId'], message: 'This device belongs to another customer' }]);
@@ -401,6 +403,8 @@ export class TicketsService {
       for (const e of events) await this.event(tx, actor, id, e);
       if (changes.length) await this.event(tx, actor, id, { type: 'fields_changed', data: { changes } });
       if (customerId !== t.customerId) await refreshCustomerCounters(tx, [t.customerId, customerId]);
+      // H1: the old device may have no non-closed ticket left.
+      if (data.deviceId) await deletePasscodeOfReleasedDevice(tx, { deviceId: t.deviceId, settingOn: shop.deletePasscodeOnClose });
       return ticketDetail(tx, id, shop, now);
     });
   }
@@ -445,6 +449,7 @@ export class TicketsService {
         noteId,
       });
       if (r.closes) {
+        await lockCustomers(tx, [t.customerId]); // lock order: ticket → customer → device
         await deletePasscodeOnClose(tx, { shopId: actor.shopId, ticketId: id, deviceId: t.deviceId, settingOn: shop.deletePasscodeOnClose });
         await refreshCustomerCounters(tx, [t.customerId]);
       }
@@ -503,6 +508,7 @@ export class TicketsService {
         entityId: id,
         after: { statusId: target.id, reason: input.reason, note, returnedConfirmed },
       });
+      await lockCustomers(tx, [t.customerId]); // lock order: ticket → customer → device
       await deletePasscodeOnClose(tx, { shopId: actor.shopId, ticketId: id, deviceId: t.deviceId, settingOn: shop.deletePasscodeOnClose });
       await refreshCustomerCounters(tx, [t.customerId]);
       return ticketDetail(tx, id, shop, now);
@@ -594,6 +600,9 @@ export class TicketsService {
    */
   async revealPasscode(actor: Actor, ticketId: string, now = new Date()): Promise<PasscodeReveal> {
     const result = await this.db(actor).tx(async (tx) => {
+      // L4: a close holds the ticket FOR UPDATE until it commits; FOR SHARE waits for it, and the read below (a new
+      // statement) then sees the ticket closed. A close that starts after us waits until this reveal commits.
+      await tx.$queryRaw`SELECT "id" FROM "tickets" WHERE "id" = ${ticketId} AND "shopId" = app_current_shop_id() FOR SHARE`;
       const t = await tx.ticket.findFirst({ where: { id: ticketId }, select: { id: true, statusCategory: true, deviceId: true } });
       if (!t) throw notFound();
       if (t.statusCategory === 'CLOSED') throw apiError('PASSCODE_NOT_AVAILABLE');

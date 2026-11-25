@@ -118,6 +118,20 @@ describe('erase vs reopen (deadlock fixed by the lock order)', () => {
   });
 });
 
+describe('ordinary contention needs no retry', () => {
+  it('a double-submitted status change: one 200, one 409 TRANSITION_NOT_ALLOWED, no transaction retry', async () => {
+    const retries = spyWarn();
+    for (let i = 0; i < 5; i++) {
+      const t = await checkInNew(owner.agent);
+      const send = () => owner.agent.post(`/api/tickets/${t.id}/status`).send({ statusId: st.Diagnosing!.id });
+      const [a, b] = await Promise.all([send(), send()]);
+      expect([a.status, b.status].sort()).toEqual([200, 409]);
+      expect((a.status === 409 ? a : b).body.code).toBe('TRANSITION_NOT_ALLOWED');
+    }
+    expect(retries()).toEqual([]);
+  });
+});
+
 describe('transaction retry (safety net)', () => {
   it('a lock cycle aborts the request with 40P01; it is retried once (logged at warn) and succeeds exactly once', async () => {
     const retries = spyWarn();

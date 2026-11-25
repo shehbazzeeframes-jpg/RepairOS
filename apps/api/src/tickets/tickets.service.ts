@@ -81,8 +81,9 @@ export function mapStatusRace(err: unknown): never {
   throw err;
 }
 
-const sameIds = (a: readonly (string | null | undefined)[] = [], b: readonly (string | null | undefined)[] = []) =>
-  [...new Set(a.filter(Boolean))].sort().join() === [...new Set(b.filter(Boolean))].sort().join();
+/** Every id in `needed` is among `held` (nulls ignored). */
+const allHeld = (needed: readonly (string | null | undefined)[] = [], held: readonly (string | null | undefined)[] = []) =>
+  needed.every((x) => !x || held.includes(x));
 
 /** What a ticket write will reference, derived from the ticket row (see `lockTicketWrite`). */
 interface TicketLockPlan {
@@ -141,7 +142,8 @@ export class TicketsService {
   /**
    * Takes a ticket write's locks in the lock order (../repair/locks): the statuses it will reference (FOR SHARE), its
    * customer(s), then the ticket. `plan` is worked out from an unlocked read of the ticket and again from the locked
-   * row; if the ticket changed in between (other customer or status), the transaction is rerun (TxRetryError).
+   * row; if the locked row needs a lock that was not taken (it moved to another customer or status meanwhile), the
+   * transaction is rerun (TxRetryError). Holding one lock too many is harmless.
    */
   private async lockTicketWrite(tx: ScopedTx, id: string, plan: (t: Ticket) => TicketLockPlan = () => ({})): Promise<Ticket> {
     const pre = await tx.ticket.findFirst({ where: { id } });
@@ -151,7 +153,8 @@ export class TicketsService {
     await lockCustomers(tx, [pre.customerId, ...(want.customers ?? [])]);
     const t = await this.lockedTicket(tx, id);
     const got = plan(t);
-    if (t.customerId !== pre.customerId || !sameIds(got.statuses, want.statuses) || !sameIds(got.customers, want.customers)) {
+    const customersHeld = [pre.customerId, ...(want.customers ?? [])];
+    if (!allHeld([t.customerId, ...(got.customers ?? [])], customersHeld) || !allHeld(got.statuses, want.statuses)) {
       throw new TxRetryError(`ticket ${id} changed before it was locked`);
     }
     return t;

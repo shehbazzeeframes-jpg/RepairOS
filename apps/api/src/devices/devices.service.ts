@@ -19,7 +19,8 @@ import { CONFIG, type AppConfig } from '../config';
 import { apiError, notFound, validationFailed } from '../common/errors';
 import { PrismaService } from '../prisma/prisma.service';
 import { auditPasscodeChange, isSecretLock, passcodeData } from '../repair/passcode';
-import { DEVICE_SELECT, deviceDto, deviceDtos, loadShopInfo, lockCustomers, ticketLink } from '../repair/read';
+import { lockCustomers, lockDevices } from '../repair/locks';
+import { DEVICE_SELECT, deviceDto, deviceDtos, loadShopInfo, ticketLink } from '../repair/read';
 
 /**
  * Creates a device for a customer (also used nested in check-in). A secret passcode is encrypted and audited
@@ -105,7 +106,7 @@ export class DevicesService {
 
   async create(actor: Actor, customerId: string, input: CreateDeviceInput): Promise<Device> {
     return this.db(actor).tx(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "customers" WHERE "id" = ${customerId} AND "shopId" = app_current_shop_id() FOR UPDATE`;
+      await lockCustomers(tx, [customerId]);
       const c = await tx.customer.findFirst({ where: { id: customerId } });
       if (!c) throw notFound();
       if (c.erasedAt) throw apiError('CUSTOMER_ERASED');
@@ -122,6 +123,7 @@ export class DevicesService {
       const owner = await tx.device.findFirst({ where: { id }, select: { customerId: true } });
       if (!owner) throw notFound();
       await lockCustomers(tx, [owner.customerId]);
+      await lockDevices(tx, [id]); // lock order: customer → device
       const d = await tx.device.findFirst({ where: { id }, select: { ...DEVICE_SELECT, customer: { select: { erasedAt: true } } } });
       if (!d) throw notFound();
       if (d.customer.erasedAt) throw apiError('CUSTOMER_ERASED');
@@ -151,6 +153,8 @@ export class DevicesService {
 
   async archive(actor: Actor, id: string): Promise<Device> {
     return this.db(actor).tx(async (tx) => {
+      // Same device lock as a check-in on this device, so the open-ticket count below cannot miss a new ticket.
+      await lockDevices(tx, [id]);
       const d = await tx.device.findFirst({ where: { id }, select: { archivedAt: true } });
       if (!d) throw notFound();
       if (!d.archivedAt) {

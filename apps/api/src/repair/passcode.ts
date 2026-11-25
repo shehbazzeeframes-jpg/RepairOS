@@ -7,6 +7,7 @@ import { formatPattern, type LockType, type PasscodeInput, SECRET_LOCK_TYPES } f
 import { CLEARED_PASSCODE_COLUMNS, encryptField, type FieldKeyring, passcodeAad, passcodeColumns, type ScopedTx } from '@repairos/db';
 import { ApiException } from '../common/errors';
 import { writeAudit } from '../common/audit';
+import { lockDevices } from './locks';
 
 /** The secret string to encrypt for a passcode input, or null for NONE / NOT_SHARED. */
 function secretOf(input: PasscodeInput): string | null {
@@ -60,7 +61,7 @@ export async function auditPasscodeChange(
  * device takes the same lock, so a close never misses a ticket being created for the device.
  */
 export async function lockDevice(tx: ScopedTx, deviceId: string): Promise<void> {
-  await tx.$queryRaw`SELECT "id" FROM "devices" WHERE "id" = ${deviceId} AND "shopId" = app_current_shop_id() FOR UPDATE`;
+  await lockDevices(tx, [deviceId]);
 }
 
 /**

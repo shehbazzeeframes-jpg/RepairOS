@@ -188,6 +188,64 @@ clean-ups that return a count only):
 | `app_sweep_unused_passcodes(minAge)` / `sweepUnusedPasscodes(db)` | Code review H1 backstop: deletes the passcode of every device with no non-closed ticket in shops with `deletePasscodeOnClose` on (passcodes set < 1 h ago are left alone). Locks each device (`SKIP LOCKED`) and re-checks; writes `passcode_deleted` on the device's last closed ticket |
 | `app_purge_ticket_idempotency_keys(olderThan)` / `purgeExpiredIdempotencyKeys(db, minutes)` | Deletes idempotency keys older than the window (never younger than 10 minutes) |
 
+Migration `20261204090000_lock_order` re-creates `app_erase_customer` (otherwise unchanged) so that it takes its locks in
+the lock order below.
+
+### Lock order
+
+Every Sprint 2 write takes its row locks in this order (helpers in `apps/api/src/repair/locks.ts`). A transaction may
+skip levels, but never takes a lock of an earlier level after one of a later level; several rows of one level are
+locked in **one statement, sorted by id** (`ORDER BY "id" COLLATE "C"`).
+
+| # | Rows | Mode | Taken by |
+|---|---|---|---|
+| 0 | `ticket_idempotency_keys` row | insert (unique index) | check-in with an `Idempotency-Key`, first statement |
+| 1 | `shops` row | `FOR UPDATE` (`lockShop`); ticket-status configuration takes `FOR NO KEY UPDATE` | settings, staff, time clock, status create/update/reorder |
+| 2 | `ticket_statuses` | `FOR SHARE` when a ticket is pointed at the status (`statusId`, `statusIdBeforeClose`); `FOR UPDATE` when the status itself changes | ticket writes; status update (one) and reorder (all) |
+| 3 | `customers` | `FOR UPDATE` | ticket writes (the ticket's customer, plus the new one on a customer change), erase, customer edit/archive/consents, device create/edit |
+| 4 | `tickets` | `FOR NO KEY UPDATE` for writes, `FOR SHARE` for reads that must not race a write | ticket writes; erase (its tickets and every ticket whose text it redacts); status re-categorisation (every ticket in the status); passcode reveal and the warranty original/root (`FOR SHARE`) |
+| 5 | `devices` | `FOR UPDATE` | check-in on an existing device, ticket device change (old + new), passcode delete on close, device edit/archive, erase (the customer's devices), reveal (view counter) |
+| 6 | `shop_ticket_settings` row | `UPDATE` / `FOR UPDATE` | ticket number (`nextTicketNumber`, last in check-in), Settings → Tickets |
+
+Per path (all through `tenantDb(...).tx`):
+
+| Path | Locks |
+|---|---|
+| Check-in | key → INITIAL status → customer → warranty original + root (`FOR SHARE`) → device → number |
+| Ticket edit (incl. customer/device change) | both customers → ticket → old + new device |
+| Status change / collect / cancel | target + current status (`FOR SHARE`) → customer → ticket → device (passcode on close) |
+| Reopen | target status → customer → ticket; refused with `CUSTOMER_ERASED` if an erase committed first |
+| Assign | ticket |
+| Passcode reveal | ticket (`FOR SHARE`) → per-user advisory lock → device |
+| Device edit | customer → device |
+| `app_erase_customer` | customer → tickets it may rewrite (sorted) → the customer's devices (sorted) |
+| Status update | shop (`NO KEY UPDATE`) → status (`FOR UPDATE`) → its tickets (sorted, category change only) → FK cascade |
+| `app_sweep_unused_passcodes` | devices only, `SKIP LOCKED` (never waits); its timeline insert takes `KEY SHARE` on a ticket, which no ticket lock above blocks |
+
+How a path knows what to lock: it reads the ticket without a lock, takes the locks top-down, then reads it again; if
+the customer or the statuses it needs changed in between, it throws `TxRetryError` and the transaction is rerun.
+Why the modes: inserting a note, event or warranty ticket takes `KEY SHARE` on the referenced ticket through its
+foreign key, and any tenant insert takes `KEY SHARE` on its shop. `FOR NO KEY UPDATE` does not conflict with
+`KEY SHARE`, so these implicit locks never form a cycle with the explicit ones. A ticket's status FK
+`(shopId, statusId, statusCategory)` is `ON UPDATE CASCADE`: re-categorising a status writes its tickets, which is why
+statuses come before tickets.
+
+Erase also locks other customers' tickets (for redaction) without their customer row. That is safe because no
+transaction waits for a customer while holding a ticket, and tickets are always locked in id order.
+
+**Safety net.** `tenantDb(...).tx(fn)` reruns the whole transaction when Postgres aborts it with a deadlock (`40P01`) or
+a serialization failure (`40001`), or `fn` throws `TxRetryError`: at most 2 retries, after a jittered 20–40 ms and
+40–80 ms (`withTxRetry`, `src/retry.ts`). The API logs each retry at warn (`Transaction retry 1/2 after deadlock
+(40P01) shop=… user=…`) and answers a conflict that survives the retries with 409 `CONFLICT`. Every attempt is a new
+transaction, so a failed attempt's `Idempotency-Key` row, ticket number and audit rows roll back with it. Nothing outside
+the database may happen inside `fn`: queue emails/jobs after `tx()` returns, or with `afterCommit(fn)` (runs once,
+after the final commit; dropped on rollback or retry). Pass `{ retry: false }` to `tenantDb` to turn the retry off.
+
+Status races left behind the status lock (a ticket write hitting the status FK or the `closedAt` CHECK) map to 409
+`CONFLICT` ("This status was changed at the same time…"); the status update maps its CHECK violations to
+`STATUS_IN_USE`. Tests: `apps/api/test/lock-order.test.ts` (each race made deterministic) and
+`apps/api/test/stress-races.test.ts` (50 rounds of mixed concurrent writes on one customer).
+
 ### Rules built into the schema
 
 - **Same-shop references.** Child rows reference parents through composite FKs `(shopId, parentId)` →

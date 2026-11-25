@@ -154,9 +154,8 @@ function StatusMenu({
       onOpenChange={onOpenChange}
       menuWidth={300}
     >
-      {groups.map((g, i) => (
+      {groups.map((g) => (
         <DropdownMenuGroup key={g.c} title={STATUS_CATEGORY_LABELS[g.c]}>
-          {i > 0 ? <DropdownMenuDivider /> : null}
           {g.items.map((s) => (
             <DropdownMenuItem key={s.id} label={<StatusBadge {...s} />} onClick={() => onPick(s)} />
           ))}
@@ -412,7 +411,7 @@ export function TicketDetailPage({ id }: { id: string }) {
       >
         <VStack gap={4}>
           {ticket.issues.length ? (
-            <HStack gap={2} wrap="wrap" aria-label="Issues" role="list">
+            <HStack gap={2} wrap="wrap">
               {ticket.issues.map((i) => (
                 <Token key={i.label} label={i.label} />
               ))}

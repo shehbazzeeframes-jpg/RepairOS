@@ -6,25 +6,32 @@ import { toNodeHandler } from 'better-auth/node';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
-import { pino } from 'pino';
+import { type DestinationStream, pino } from 'pino';
 import { pinoHttp } from 'pino-http';
 import { AppModule } from './app.module';
 import { AUTH, type Auth } from './auth/auth';
 import { authRateLimits, invitePreviewRateLimit } from './auth/rate-limit';
 import { ApiErrorFilter, toApiError } from './common/api-error.filter';
 import { jsonBody } from './common/json-body';
+import { serializeReq, serializeRes } from './common/log-redact';
 import type { AppConfig } from './config';
 
 /** Client-supplied request ids are kept only if short and safe to log. */
 const REQUEST_ID = /^[\w-]{1,64}$/;
 
-export function createLogger(config: AppConfig) {
-  const pretty = config.nodeEnv === 'development' && process.stdout.isTTY;
-  return pino({
+export interface CreateAppOptions {
+  /** Where logs go (default stdout). Tests pass a stream to assert on what is logged. */
+  logDestination?: DestinationStream;
+}
+
+export function createLogger(config: AppConfig, destination?: DestinationStream) {
+  const pretty = !destination && config.nodeEnv === 'development' && process.stdout.isTTY;
+  const options = {
     level: config.logLevel,
     redact: ['req.headers.cookie', 'req.headers.authorization', 'res.headers["set-cookie"]'],
     ...(pretty ? { transport: { target: 'pino-pretty', options: { singleLine: true } } } : {}),
-  });
+  };
+  return destination ? pino(options, destination) : pino(options);
 }
 
 /**
@@ -32,8 +39,8 @@ export function createLogger(config: AppConfig) {
  * Middleware order: pino-http → helmet → CORS → auth rate limits → Better Auth
  * → JSON body parser → Nest routes → error handler.
  */
-export async function createApp(config: AppConfig): Promise<NestExpressApplication> {
-  const logger = createLogger(config);
+export async function createApp(config: AppConfig, options: CreateAppOptions = {}): Promise<NestExpressApplication> {
+  const logger = createLogger(config, options.logDestination);
   const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(config, logger), {
     bodyParser: false, // Better Auth reads the raw request; JSON parsing is added after it.
     bufferLogs: true,
@@ -56,6 +63,8 @@ export async function createApp(config: AppConfig): Promise<NestExpressApplicati
         return id;
       },
       autoLogging: { ignore: (req) => req.url === '/api/health' },
+      // BUG-01: invite/reset tokens are masked in URLs, `referer` is dropped (see common/log-redact.ts).
+      serializers: { req: serializeReq, res: serializeRes },
     }),
   );
   app.use(helmet());

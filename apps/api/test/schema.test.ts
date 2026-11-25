@@ -45,6 +45,24 @@ describe('schema: row-level security', () => {
   });
 });
 
+describe('schema: SECURITY DEFINER functions (L1)', () => {
+  it('app_invitation_by_token_hash pins a safe search_path and schema-qualifies its table', async () => {
+    const [fn] = await admin.$queryRaw<{ secdef: boolean; config: string[] | null; src: string }[]>`
+      SELECT p.prosecdef AS secdef, p.proconfig AS config, p.prosrc AS src
+      FROM pg_proc p WHERE p.proname = 'app_invitation_by_token_hash' AND p.pronamespace = 'public'::regnamespace`;
+    expect(fn!.secdef).toBe(true);
+    expect(fn!.config).toEqual(['search_path=pg_catalog, public, pg_temp']);
+    expect(fn!.src).toContain('public."invitations"');
+  });
+
+  it('every SECURITY DEFINER function in public sets search_path with pg_temp last', async () => {
+    const rows = await admin.$queryRaw<{ name: string; config: string[] | null }[]>`
+      SELECT p.proname AS name, p.proconfig AS config FROM pg_proc p
+      WHERE p.pronamespace = 'public'::regnamespace AND p.prosecdef`;
+    for (const r of rows) expect(r.config?.find((c) => c.startsWith('search_path='))).toMatch(/pg_temp$/);
+  });
+});
+
 describe('error mapping', () => {
   it('maps a Postgres 42501 (RLS / privilege) error to 404 NOT_FOUND', () => {
     const modelErr = Object.assign(

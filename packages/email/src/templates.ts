@@ -20,6 +20,30 @@ export function escapeHtml(value: string): string {
 
 const BRAND = '#1f4fd1';
 
+const SCHEME_URL = /\b[a-z][a-z0-9+.-]*:\/\/\S*/gi;
+const WWW_HOST = /\bwww\.\S*/gi;
+/** Bare host names such as `secure-login.com/reset` (common TLDs only, so "Fix.It Repairs" survives). */
+const BARE_HOST =
+  /\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|info|biz|io|co|app|dev|link|xyz|top|site|online|shop|store|me|ly|ru|cn|uk|us|pk|in)\b\S*/gi;
+
+/**
+ * L4: user-controlled names (shop, inviter) in a subject line or preheader. Mail clients linkify URLs in subjects,
+ * so a shop called "Verify at evil.com" would turn our email into a phishing link: strip URLs, host names and
+ * angle brackets, collapse whitespace and cap the length. Falls back to `fallback` if nothing is left.
+ */
+export function subjectSafe(value: string, fallback: string, max = 80): string {
+  const cleaned = value
+    .replace(SCHEME_URL, ' ')
+    .replace(WWW_HOST, ' ')
+    .replace(BARE_HOST, ' ')
+    .replace(/[<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max)
+    .trim();
+  return cleaned || fallback;
+}
+
 function layout(opts: { preheader: string; bodyHtml: string; button: { label: string; url: string }; footerHtml: string }): string {
   const url = escapeHtml(opts.button.url);
   return `<!doctype html>
@@ -58,9 +82,14 @@ export interface InviteEmailInput {
   expiresText: string;
 }
 
-/** Story §8 E1. Subject: "{Inviter name} invited you to join {Shop name} on RepairOS". */
+/**
+ * Story §8 E1. Subject: "{Inviter name} invited you to join {Shop name} on RepairOS" (names made subject-safe, L4).
+ * No Reply-To: the inviter's address is not verified, so replies go nowhere rather than to an unverified address.
+ */
 export function inviteEmail(i: InviteEmailInput): RenderedEmail {
-  const subject = `${i.inviterName} invited you to join ${i.shopName} on RepairOS`;
+  const subjectInviter = subjectSafe(i.inviterName, 'Someone');
+  const subjectShop = subjectSafe(i.shopName, 'a shop');
+  const subject = `${subjectInviter} invited you to join ${subjectShop} on RepairOS`;
   const e = escapeHtml;
   const bodyHtml = [
     `<p style="margin:0 0 12px 0;">Hello,</p>`,
@@ -69,7 +98,7 @@ export function inviteEmail(i: InviteEmailInput): RenderedEmail {
   ].join('\n');
   const footerHtml = `This invite expires on ${e(i.expiresText)}.<br>If you weren't expecting this, you can ignore this email.`;
   const html = layout({
-    preheader: `Join ${i.shopName} on RepairOS`,
+    preheader: `Join ${subjectShop} on RepairOS`,
     bodyHtml,
     button: { label: 'Accept invite', url: i.url },
     footerHtml,

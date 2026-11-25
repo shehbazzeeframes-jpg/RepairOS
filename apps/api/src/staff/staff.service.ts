@@ -160,7 +160,7 @@ export class StaffService {
       expiresText: formatLocalDateTime(invite.expiresAt, shop.timezone, shop.locale),
     });
     await this.email.dispatch(
-      { to: invite.email, replyTo: actor.email, ...rendered },
+      { to: invite.email, ...rendered },
       { kind: 'invite', shopId: invite.shopId, invitationId: invite.id, sendCount: invite.sendCount },
     );
   }

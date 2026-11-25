@@ -167,6 +167,75 @@ describe('tax settings and rates (TX1, D1, D2)', () => {
     expect(res.body.code).toBe('LAST_TAX_RATE');
   });
 
+  it('L2 concurrency: parallel tax writes serialise and fail with their own codes, never a generic CONFLICT', async () => {
+    const owner = await ownerWithShop(app);
+    // Same name created 6 times at once: one 201, the rest TAX_RATE_NAME_TAKEN.
+    const creates = await Promise.all(
+      Array.from({ length: 6 }, () => owner.agent.post('/api/shop/tax-rates').send({ name: 'County', rateMilliPct: 1000, appliesTo: 'all' })),
+    );
+    expect(creates.filter((r) => r.status === 201)).toHaveLength(1);
+    expect(creates.filter((r) => r.status !== 201).map((r) => r.body.code)).toEqual(Array(5).fill('TAX_RATE_NAME_TAKEN'));
+
+    // Several rates claim the goods default at once: exactly one default afterwards, all requests succeed.
+    const extra = await Promise.all(
+      ['A', 'B', 'C', 'D'].map(async (n) =>
+        TaxRate.parse((await owner.agent.post('/api/shop/tax-rates').send({ name: n, rateMilliPct: 100, appliesTo: 'goods' }).expect(201)).body),
+      ),
+    );
+    const defaults = await Promise.all(extra.map((r) => owner.agent.patch(`/api/shop/tax-rates/${r.id}`).send({ isDefaultGoods: true })));
+    expect(defaults.map((r) => r.status)).toEqual([200, 200, 200, 200]);
+    expect((await rates(owner)).filter((r) => r.isDefaultGoods)).toHaveLength(1);
+
+    // Two non-default rates are the only others besides defaults: archiving everything at once leaves ≥ 1 active
+    // rate, and refusals carry LAST_TAX_RATE / TAX_RATE_IS_DEFAULT.
+    const gb = await ownerWithShop(app, { country: 'GB' });
+    const [vat] = await rates(gb);
+    const second = TaxRate.parse((await gb.agent.post('/api/shop/tax-rates').send({ name: 'Zero', rateMilliPct: 0, appliesTo: 'all' }).expect(201)).body);
+    // Move both defaults to `second`, then race: archive VAT ×3, archive Zero ×3, make VAT default again.
+    await gb.agent.patch(`/api/shop/tax-rates/${second.id}`).send({ isDefaultGoods: true, isDefaultServices: true }).expect(200);
+    const race = await Promise.all([
+      ...Array.from({ length: 3 }, () => gb.agent.post(`/api/shop/tax-rates/${vat!.id}/archive`)),
+      ...Array.from({ length: 3 }, () => gb.agent.post(`/api/shop/tax-rates/${second.id}/archive`)),
+      gb.agent.patch(`/api/shop/tax-rates/${vat!.id}`).send({ isDefaultGoods: true }),
+      gb.agent.patch('/api/shop/tax-settings').send({ pricesIncludeTax: false }),
+    ]);
+    for (const r of race) {
+      expect(r.body.code).not.toBe('CONFLICT');
+      if (r.status !== 200) expect(['LAST_TAX_RATE', 'TAX_RATE_IS_DEFAULT', 'TAX_RATE_ARCHIVED']).toContain(r.body.code);
+    }
+    const after = await rates(gb);
+    expect(after.length).toBeGreaterThanOrEqual(1);
+    expect(after.filter((r) => r.isDefaultServices)).toHaveLength(1);
+    expect(after.filter((r) => r.isDefaultGoods)).toHaveLength(1);
+  });
+
+  it('L2: every tax write takes the shop lock (a held lock blocks it)', async () => {
+    const owner = await ownerWithShop(app);
+    const [rate] = await rates(owner);
+    const writes = [
+      () => owner.agent.post('/api/shop/tax-rates').send({ name: 'Locked', rateMilliPct: 1, appliesTo: 'all' }),
+      () => owner.agent.patch(`/api/shop/tax-rates/${rate!.id}`).send({ rateMilliPct: 5 }),
+      () => owner.agent.post(`/api/shop/tax-rates/${rate!.id}/archive`),
+      () => owner.agent.post(`/api/shop/tax-rates/${rate!.id}/restore`),
+      () => owner.agent.patch(`/api/shop/tax-rates/${rate!.id}`).send({ isDefaultGoods: true }),
+      () => owner.agent.patch('/api/shop/tax-settings').send({ pricesIncludeTax: true }),
+    ];
+    for (const write of writes) {
+      let finished = false;
+      let pending: Promise<{ status: number }> | undefined;
+      await adminDb.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM shops WHERE id = ${owner.shopId} FOR UPDATE`;
+        pending = write().then((r) => {
+          finished = true;
+          return r;
+        });
+        await new Promise((r) => setTimeout(r, 300));
+        expect(finished).toBe(false); // waiting for the shop lock
+      });
+      expect((await pending!).status).toBeLessThan(500); // runs once the lock is released
+    }
+  });
+
   it('rate validation: 0–100% with up to 3 decimals as integer milli-percent', async () => {
     const owner = await ownerWithShop(app);
     for (const rateMilliPct of [-1, 100_001, 8.5]) {

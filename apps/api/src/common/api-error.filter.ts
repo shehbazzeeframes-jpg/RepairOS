@@ -2,6 +2,7 @@ import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException, Logger 
 import type { ApiError } from '@repairos/contracts';
 import type { Response } from 'express';
 import { ApiException, STATUS_TO_CODE } from './errors';
+import { redactSecrets } from './log-redact';
 
 interface PrismaLikeError {
   name: string;
@@ -71,11 +72,11 @@ export class ApiErrorFilter implements ExceptionFilter {
     if (isPrivilegeViolation(exception)) {
       const req = host.switchToHttp().getRequest<{ method?: string; url?: string; auth?: { user?: { id?: string }; activeShop?: unknown } }>();
       this.logger.warn(
-        `SECURITY: database privilege/RLS violation on ${req.method} ${req.url} user=${req.auth?.user?.id ?? 'anonymous'} ` +
+        `SECURITY: database privilege/RLS violation on ${req.method} ${redactSecrets(req.url ?? '')} user=${req.auth?.user?.id ?? 'anonymous'} ` +
           `activeShop=${JSON.stringify(req.auth?.activeShop ?? null)}: ${exception instanceof Error ? exception.message.split('\n').pop() : ''}`,
       );
     } else if (body.statusCode >= 500) {
-      this.logger.error(exception instanceof Error ? (exception.stack ?? exception.message) : String(exception));
+      this.logger.error(redactSecrets(exception instanceof Error ? (exception.stack ?? exception.message) : String(exception)));
     }
     const res = host.switchToHttp().getResponse<Response>();
     if (res.headersSent) return;

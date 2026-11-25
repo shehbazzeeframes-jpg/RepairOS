@@ -1,11 +1,13 @@
 /** Story §3 (accepting invites), D7, D10, §8 email + dev outbox, D4 password reset, §7 shop cap. */
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AcceptInviteResponse, InviteLinkResponse, InvitePreview, MeResponse, StaffListItem } from '@repairos/contracts';
 import { PrismaClient } from '@repairos/db';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ageInviteSends, auditOf, emailsTo, inviteTokenFor, lastEmailTo, ownerWithShop, type OwnerWithShop } from './fixtures';
-import { agentFor, APP_URL, createTestApp, signUp, uniqueEmail } from './helpers';
+import { agentFor, APP_URL, createTestApp, signUp, TEST_OUTBOX_DIR, uniqueEmail } from './helpers';
 
 let app: NestExpressApplication;
 let adminDb: PrismaClient;
@@ -25,7 +27,7 @@ async function invite(owner: OwnerWithShop, role = 'FRONT_DESK', email = uniqueE
 }
 
 describe('invite email (§8)', () => {
-  it('is sent with subject, reply-to inviter, role line, button, link and expiry in shop time', async () => {
+  it('is sent with subject, role line, button, link and expiry in shop time; no Reply-To (L4)', async () => {
     const owner = await ownerWithShop(app, { name: 'Ava Khan', country: 'PK', shopName: 'Lahore Fix' });
     const { email, token } = await invite(owner, 'TECHNICIAN');
     const mail = (await lastEmailTo(email))!;
@@ -35,6 +37,9 @@ describe('invite email (§8)', () => {
     expect(mail.html).toContain(`href="${APP_URL}/invite/${token}"`);
     expect(mail.html).toContain('Accept invite');
     expect(mail.text).toMatch(/This invite expires on .*(GMT\+5|PKT)/);
+    // L4: the inviter's address is unverified, so it is never the Reply-To.
+    const stored = JSON.parse(await readFile(join(TEST_OUTBOX_DIR, `${mail.id}.json`), 'utf8')) as { replyTo: string | null };
+    expect(stored.replyTo).toBeNull();
   });
 
   it('dev outbox API lists newest first (≤ 50) and returns one item; 404 for unknown ids', async () => {
@@ -54,11 +59,28 @@ describe('invite email (§8)', () => {
     expect((await request(app.getHttpServer()).get('/api/dev/outbox/..%2F..%2Fetc')).status).toBe(404);
   });
 
-  it('dev outbox is 404 in production', async () => {
-    const { DevOutboxController } = await import('../src/email/dev-outbox.controller');
+  it('M2: dev outbox needs DEV_OUTBOX=1 AND the outbox provider AND NODE_ENV development/test (404 otherwise)', async () => {
+    const { DevOutboxController, isDevOutboxEnabled } = await import('../src/email/dev-outbox.controller');
     const { testConfig } = await import('./helpers');
-    const prod = new DevOutboxController({ ...testConfig(), nodeEnv: 'production' });
-    await expect(prod.list()).rejects.toMatchObject({ response: { statusCode: 404 } });
+    const base = testConfig();
+    const resend = { ...base.email, provider: 'resend' as const, resendApiKey: 're_x' };
+    expect(isDevOutboxEnabled(base)).toBe(true);
+    expect(isDevOutboxEnabled({ ...base, nodeEnv: 'development' })).toBe(true);
+    expect(isDevOutboxEnabled({ ...base, devOutbox: false })).toBe(false);
+    expect(isDevOutboxEnabled({ ...base, nodeEnv: 'production' })).toBe(false);
+    expect(isDevOutboxEnabled({ ...base, nodeEnv: 'staging' })).toBe(false);
+    expect(isDevOutboxEnabled({ ...base, email: resend })).toBe(false);
+    for (const config of [{ ...base, nodeEnv: 'production' }, { ...base, devOutbox: false }, { ...base, email: resend }]) {
+      const controller = new DevOutboxController(config);
+      await expect(controller.list()).rejects.toMatchObject({ response: { statusCode: 404 } });
+      await expect(controller.get('x')).rejects.toMatchObject({ response: { statusCode: 404 } });
+    }
+    const off = await createTestApp({ devOutbox: false });
+    try {
+      expect((await request(off.getHttpServer()).get('/api/dev/outbox')).status).toBe(404);
+    } finally {
+      await off.close();
+    }
   });
 
   it('a failed send marks the invite FAILED (shown as "Email failed. Resend")', async () => {
@@ -278,8 +300,8 @@ describe('accept (POST /api/invites/:token/accept)', () => {
     expect(res.body.message).toMatch(/too many times today/);
   });
 
-  it('a deactivated member who accepts a new invite is reactivated with the invite role', async () => {
-    const owner = await ownerWithShop(app);
+  it('L6: a deactivated member who accepts an invite gets 409 MEMBER_DEACTIVATED; nothing changes', async () => {
+    const owner = await ownerWithShop(app, { shopName: 'Gone Shop' });
     const first = await invite(owner, 'TECHNICIAN');
     const person = agentFor(app);
     await signUp(person, 'Back Again', first.email);
@@ -289,12 +311,19 @@ describe('accept (POST /api/invites/:token/accept)', () => {
     // MEMBER_DEACTIVATED blocks a normal invite; simulate an invite that predates the deactivation
     const { newInviteToken } = await import('../src/staff/staff.mappers');
     const { token, tokenHash } = newInviteToken();
-    await adminDb.invitation.create({
+    const pending = await adminDb.invitation.create({
       data: { shopId: owner.shopId, email: first.email, role: 'FRONT_DESK', tokenHash, expiresAt: new Date(Date.now() + 3600_000) },
     });
-    const res = AcceptInviteResponse.parse((await person.post(`/api/invites/${token}/accept`).expect(200)).body);
-    expect(res).toMatchObject({ role: 'FRONT_DESK', alreadyMember: false });
-    expect(await adminDb.membership.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ status: 'ACTIVE', role: 'FRONT_DESK' });
+    const res = await person.post(`/api/invites/${token}/accept`);
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({
+      statusCode: 409,
+      code: 'MEMBER_DEACTIVATED',
+      message: 'Your access to Gone Shop was turned off. Ask an owner or manager to reactivate you.',
+    });
+    expect(await adminDb.membership.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ status: 'DEACTIVATED', role: 'TECHNICIAN' });
+    expect(await adminDb.invitation.findUniqueOrThrow({ where: { id: pending.id } })).toMatchObject({ status: 'PENDING' });
+    expect(await auditOf(adminDb, owner.shopId, 'member.reactivated')).toHaveLength(0);
   });
 
   it('an invite token for shop A never grants shop B', async () => {
@@ -384,6 +413,54 @@ describe('shop creation cap (§7)', () => {
     } finally {
       await limited.close();
     }
+  });
+
+  it('M1: N parallel creates never exceed the owned-shop cap (exactly 3 shops)', async () => {
+    const roomy = await createTestApp({ shopCreatePerHour: 100, shopOwnedLimit: 3 });
+    try {
+      const agent = agentFor(roomy);
+      const { userId } = await signUp(agent);
+      const results = await Promise.all(
+        Array.from({ length: 8 }, (_, i) => agent.post('/api/shops').send({ name: `Race ${i}`, country: 'US' })),
+      );
+      expect(results.filter((r) => r.status === 201)).toHaveLength(3);
+      expect(results.filter((r) => r.status !== 201).every((r) => r.status === 403 && r.body.code === 'SHOP_LIMIT_REACHED')).toBe(true);
+      expect(await adminDb.membership.count({ where: { userId, role: 'OWNER', status: 'ACTIVE' } })).toBe(3);
+    } finally {
+      await roomy.close();
+    }
+  });
+
+  it('M1: the hourly slot is reserved before the create and given back when the create fails', async () => {
+    const tight = await createTestApp({ shopCreatePerHour: 3, shopOwnedLimit: 1 });
+    try {
+      const agent = agentFor(tight);
+      const { userId } = await signUp(agent);
+      const results = await Promise.all(Array.from({ length: 4 }, (_, i) => agent.post('/api/shops').send({ name: `Slot ${i}`, country: 'US' })));
+      expect(results.filter((r) => r.status === 201)).toHaveLength(1);
+      expect(results.every((r) => [201, 403, 429].includes(r.status))).toBe(true);
+      // Failed creates released their slots: one of three is used, so after freeing the owned cap, two more fit.
+      await adminDb.membership.updateMany({ where: { userId }, data: { role: 'MANAGER' } });
+      await agent.post('/api/shops').send({ name: 'After 1', country: 'US' }).expect(201);
+      await adminDb.membership.updateMany({ where: { userId }, data: { role: 'MANAGER' } });
+      await agent.post('/api/shops').send({ name: 'After 2', country: 'US' }).expect(201);
+      await adminDb.membership.updateMany({ where: { userId }, data: { role: 'MANAGER' } });
+      expect((await agent.post('/api/shops').send({ name: 'After 3', country: 'US' })).status).toBe(429);
+    } finally {
+      await tight.close();
+    }
+  });
+
+  it('HourlyLimiter: reserve is check-and-take; release frees the slot', async () => {
+    const { HourlyLimiter } = await import('../src/shops/shops.service');
+    const limiter = new HourlyLimiter(2);
+    const a = limiter.tryReserve('u', 1_000)!;
+    expect(limiter.tryReserve('u', 1_001)).not.toBeNull();
+    expect(limiter.tryReserve('u', 1_002)).toBeNull();
+    limiter.release('u', a);
+    expect(limiter.tryReserve('u', 1_003)).not.toBeNull();
+    expect(limiter.tryReserve('u', 1_004)).toBeNull();
+    expect(limiter.tryReserve('u', 10_000_000)).not.toBeNull(); // the hour has passed
   });
 
   it('new shops get D9 business hours and goods/services tax defaults', async () => {

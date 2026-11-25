@@ -70,3 +70,21 @@ Money is stored as integer minor units plus a currency code. All timestamps are 
 3. Money changes (invoice, payment, refund) are immutable records plus audit log, never edited in place.
 4. Contracts first: a feature starts with Zod schemas in `packages/contracts`, then the API, then the UI.
 5. UI uses Astryx components and tokens only. No hand-rolled buttons, inputs, tables or colours. Check `npx astryx search <thing>` before building any component.
+
+## Logging and secrets in URLs
+Invite links (`/invite/<token>`) and password-reset links (`/reset-password?token=…`, reached through the API's
+`/api/auth/reset-password/<token>` callback) carry bearer tokens in the URL.
+- **API:** pino-http logs a redacted URL for `/api/invites/<token>` and `/api/auth/reset-password/<token>`, drops their
+  `query`/`params`, masks `?token=` everywhere and in the `Location` response header, and never logs the `Referer`
+  header (it holds the page URL). Better Auth's logger and the error filter go through the same scrubber
+  (`apps/api/src/common/log-redact.ts`). The worker never logs job data. A test asserts no token reaches the log.
+- **Web host (Vercel, or `next start` behind any proxy/CDN):** its request logs **will** record `/invite/<token>` and
+  `/reset-password?token=…`, because those are page URLs. Keep the web host's request-log retention short (days, not
+  months), restrict who can read those logs, and never forward them to third-party log sinks without URL scrubbing.
+  Invite tokens expire after 7 days and reset tokens after 1 hour, and both are single-use.
+
+## Runtime mode
+The API and worker refuse to start without an explicit `NODE_ENV`. Any value other than `development` or `test` is
+treated as production: `RESEND_API_KEY` and `EMAIL_FROM` are required (the worker also requires `APP_DATABASE_URL`).
+The dev outbox API (`/api/dev/outbox`) is served only with `DEV_OUTBOX=1`, the file outbox provider and
+`NODE_ENV` development/test; it is a 404 otherwise.

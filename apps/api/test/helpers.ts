@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import { createApp } from '../src/app.factory';
+import { createApp, type CreateAppOptions } from '../src/app.factory';
 import { type AppConfig, loadConfig } from '../src/config';
 
 export const APP_URL = 'http://localhost:3000';
@@ -27,13 +27,14 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
       RESEND_API_KEY: '',
       EMAIL_OUTBOX_DIR: TEST_OUTBOX_DIR,
       EMAIL_DELIVERY: 'sync',
+      DEV_OUTBOX: '1',
     }),
     ...overrides,
   };
 }
 
-export async function createTestApp(overrides: Partial<AppConfig> = {}): Promise<NestExpressApplication> {
-  return createApp(testConfig(overrides));
+export async function createTestApp(overrides: Partial<AppConfig> = {}, options: CreateAppOptions = {}): Promise<NestExpressApplication> {
+  return createApp(testConfig(overrides), options);
 }
 
 export type Agent = ReturnType<typeof request.agent>;

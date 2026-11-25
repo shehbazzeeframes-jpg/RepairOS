@@ -38,6 +38,9 @@ Prerequisites: local Postgres and Redis, Chromium from `PLAYWRIGHT_BROWSERS_PATH
    # APP_URL=http://localhost:3200  API_URL=http://localhost:4100  PORT=4100
    # REDIS_URL=redis://localhost:6379/7   (own Redis DB, so another worktree's worker can't take our email jobs)
    # AUTH_RATE_LIMIT_MAX=300  SHOP_CREATE_PER_HOUR=100  INVITE_PREVIEW_RATE_LIMIT=1000   (the suite signs in a lot from one IP)
+   # NODE_ENV=development  DEV_OUTBOX=1   (required since fix/sprint1-api: the API/worker refuse to start without
+   #   NODE_ENV, and /api/dev/outbox is a 404 unless DEV_OUTBOX=1, RESEND_API_KEY is unset and NODE_ENV is development/test)
+   # PASSWORD_RESET_PER_EMAIL_HOUR=50   (optional: reset emails per account per hour, default 5)
    pnpm install && pnpm db:migrate && pnpm db:seed
    ```
 2. Build:
@@ -48,7 +51,7 @@ Prerequisites: local Postgres and Redis, Chromium from `PLAYWRIGHT_BROWSERS_PATH
    ```
 3. Start (three terminals, or `nohup … &`):
    ```
-   (cd apps/api && pnpm start > /tmp/api.log 2>&1)       # NODE_ENV unset → /api/dev/outbox enabled
+   (cd apps/api && pnpm start > /tmp/api.log 2>&1)       # needs NODE_ENV=development + DEV_OUTBOX=1 in .env for /api/dev/outbox
    (cd apps/worker && pnpm start)
    (cd apps/web && pnpm exec next start --port 3200)
    ```

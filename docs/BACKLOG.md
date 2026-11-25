@@ -27,3 +27,11 @@ one instance (before the beta).
 - Finding 12 (getSession dropped refreshed `Set-Cookie`): fixed. The auth guard calls
   `getSession({ returnHeaders: true })` and forwards `Set-Cookie`, so sliding session expiry and
   cleared cookies reach the browser through `/api/*` calls (test: "forwards the refreshed session cookie").
+
+### Stale-tab requests can be cached under the previous shop (Sprint 2)
+*Source: Sprint 1 web fixes (M3 follow-up).*
+If tab 2 switches shop, a request already sent by tab 1 is answered for the new shop but cached under the old shop's key until the next `/me` refetch (focus or 403) drops it. Close it fully by having the API echo `shopId` in shop-scoped responses (or accept an `X-Shop-Id` header and reject a mismatch with 409), with the web client discarding mismatched responses.
+
+### Flaky mocked e2e: onboarding country select (Sprint 2)
+*Source: Sprint 1 web fixes.*
+`e2e/tests/onboarding.spec.ts` occasionally fails when clicking the Country option during the dropdown animation. Wait for the listbox to be stable before clicking.

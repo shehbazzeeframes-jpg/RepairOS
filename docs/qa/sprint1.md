@@ -294,3 +294,17 @@ Status: **Pass**, **Fail (BUG-x)**, **Partial** (the real-stack test covers part
 - **SC1.2** (5 shops per hour) and invite rate limits (20/day/shop): the limits are in-memory per API process, so reruns against a long-lived API would trip them. The QA env raises `SHOP_CREATE_PER_HOUR`.
 - **E1.4 FAILED path / "Email failed. Resend"**, **D6 production start-up refusal:** they need a failing provider or a production start. Out of scope for this suite.
 - **Mobile ≤ 900px** (TabList settings nav, icon-only clock): only 1024 and 1440 were in scope.
+
+## Retest after fixes (2026-11-25, main 0ff1a70)
+
+Real-stack suite with `REAL_API_LOG` set: **56 passed, 0 failed, 0 skipped.**
+
+| Bug | Status | Fixed in |
+|---|---|---|
+| BUG-01 tokens in API logs | **Fixed**: SEC-01 passes with the API log checked | fix/sprint1-api (log-redact serializers, Referer dropped, 302 Location masked) |
+| BUG-02 prefetch writes export audit events | **Fixed**: AUD-03 passes | fix/sprint1-web (plain download anchor) + fix/sprint1-api (prefetch requests ignored) |
+| BUG-03 access-removed banner missing after in-app action | **Fixed**: DEACT-02b passes | fix/sprint1-web (banner state latched) |
+| BUG-04 story's UK example invalid | **Fixed in the story** (example is now 07911 123456); PROF-GB-2 passes | main |
+| BUG-05 truncation at 1024px | **Fixed**: LAYOUT-1024 passes | fix/sprint1-web |
+| BUG-06 hours inputs unnamed by day | **Fixed**: A11Y-names-hours passes | fix/sprint1-web |
+| BUG-07 clock button announced twice | **Fixed**: A11Y-names-clock passes | fix/sprint1-web |

@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma, type PrismaClient } from '@prisma/client';
+import { withTxRetry, type TxRetryOptions } from './retry';
 import { scopeArgs, TenantScopeError } from './scope-args';
 
 /**
@@ -18,6 +19,8 @@ export interface TenantContext {
 interface TenantTxState {
   shopId: string;
   tx: object;
+  /** Callbacks for after the commit of this attempt (dropped if the attempt rolls back or is retried). */
+  afterCommit: (() => unknown)[];
 }
 const tenantTxStore = new AsyncLocalStorage<TenantTxState>();
 
@@ -96,6 +99,27 @@ export interface TxOptions {
   isolationLevel?: Prisma.TransactionIsolationLevel;
 }
 
+/** Options of `tenantDb`. */
+export interface TenantDbOptions {
+  /**
+   * Retry of a top-level `tx()` that fails with a deadlock (40P01) or serialization failure (40001), or throws
+   * `TxRetryError`: at most `maxRetries` (default 2) more attempts, with jitter. `false` turns it off.
+   */
+  retry?: TxRetryOptions | false;
+}
+
+/**
+ * Runs `fn` once, after the current `tenantDb().tx()` has committed (immediately when called outside one). Use it for
+ * side effects outside the database (queueing an email or a job): a retried attempt's callbacks are dropped with
+ * its rollback, so the effect happens once, and never for a transaction that rolls back. The callback's error is
+ * thrown to the caller of `tx()` (the data is already committed).
+ */
+export async function afterCommit(fn: () => unknown): Promise<void> {
+  const state = tenantTxStore.getStore();
+  if (state) state.afterCommit.push(fn);
+  else await fn();
+}
+
 /**
  * The scoped data access entry point used by the API.
  *
@@ -106,7 +130,7 @@ export interface TxOptions {
  * Inside `db.tx(fn)`, `db.client` calls for the same shop are routed to the transaction,
  * so they see uncommitted writes and roll back with it.
  */
-export function tenantDb(base: PrismaClient, ctx: TenantContext) {
+export function tenantDb(base: PrismaClient, ctx: TenantContext, opts: TenantDbOptions = {}) {
   if (!ctx.shopId) throw new Error('tenantDb: shopId is required');
   const raw = extendedClient(base, ctx);
 
@@ -136,10 +160,19 @@ export function tenantDb(base: PrismaClient, ctx: TenantContext) {
         // Already inside a transaction for this shop: join it.
         return fn(current.tx as ScopedTx);
       }
-      return raw.$transaction(async (tx) => {
-        await tx.$executeRaw(setConfigSql(ctx.shopId, ctx.userId));
-        return tenantTxStore.run({ shopId: ctx.shopId, tx }, () => fn(tx as ScopedTx));
-      }, options);
+      const attempt = async () => {
+        const callbacks: (() => unknown)[] = [];
+        const result = await raw.$transaction(async (tx) => {
+          await tx.$executeRaw(setConfigSql(ctx.shopId, ctx.userId));
+          return tenantTxStore.run({ shopId: ctx.shopId, tx, afterCommit: callbacks }, () => fn(tx as ScopedTx));
+        }, options);
+        return { result, callbacks };
+      };
+      const run = opts.retry === false ? attempt() : withTxRetry(attempt, opts.retry);
+      return run.then(async ({ result, callbacks }) => {
+        for (const cb of callbacks) await cb();
+        return result;
+      });
     },
   };
 }

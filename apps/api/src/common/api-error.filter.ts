@@ -1,5 +1,6 @@
 import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { ApiError } from '@repairos/contracts';
+import { retryableSqlState } from '@repairos/db';
 import type { Response } from 'express';
 import { ApiException, STATUS_TO_CODE } from './errors';
 import { redactSecrets } from './log-redact';
@@ -55,6 +56,11 @@ export function toApiError(exception: unknown): ApiError {
   // Treated as "not found" so the response never confirms another shop's data exists.
   if (isPrivilegeViolation(exception)) return { statusCode: 404, code: 'NOT_FOUND', message: 'Not found' };
 
+  // Still deadlocked / not serializable after the transaction retries (PrismaService.forShop): nothing was written.
+  if (retryableSqlState(exception) !== null) {
+    return { statusCode: 409, code: 'CONFLICT', message: 'Someone else changed this at the same time. Try again.' };
+  }
+
   if (isPrismaKnownError(exception)) {
     if (exception.code === 'P2002') return { statusCode: 409, code: 'CONFLICT', message: 'Already exists' };
     if (exception.code === 'P2025') return { statusCode: 404, code: 'NOT_FOUND', message: 'Not found' };
@@ -75,6 +81,8 @@ export class ApiErrorFilter implements ExceptionFilter {
         `SECURITY: database privilege/RLS violation on ${req.method} ${redactSecrets(req.url ?? '')} user=${req.auth?.user?.id ?? 'anonymous'} ` +
           `activeShop=${JSON.stringify(req.auth?.activeShop ?? null)}: ${exception instanceof Error ? exception.message.split('\n').pop() : ''}`,
       );
+    } else if (retryableSqlState(exception) !== null) {
+      this.logger.warn(`Transaction gave up after retries: ${exception instanceof Error ? exception.message.split('\n').pop() : ''}`);
     } else if (body.statusCode >= 500) {
       this.logger.error(redactSecrets(exception instanceof Error ? (exception.stack ?? exception.message) : String(exception)));
     }

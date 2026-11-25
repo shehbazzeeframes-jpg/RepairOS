@@ -1,4 +1,4 @@
-import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import {
   assertAppRole,
   createPrismaClient,
@@ -10,6 +10,7 @@ import {
   type Role,
   type TenantContext,
   type TenantDb,
+  type TxRetryInfo,
 } from '@repairos/db';
 import { CONFIG, type AppConfig } from '../config';
 
@@ -29,6 +30,7 @@ export interface MembershipRef {
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
   readonly base: PrismaClient;
+  private readonly logger = new Logger('Transactions');
 
   constructor(@Inject(CONFIG) config: AppConfig) {
     this.base = createPrismaClient(config.databaseUrl);
@@ -39,8 +41,21 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     await assertAppRole(this.base);
   }
 
+  /**
+   * Scoped access for one shop. Its `tx()` is retried (at most twice, with jitter) when Postgres aborts it with a
+   * deadlock (40P01) or serialization failure (40001): every attempt is a fresh transaction, so the Idempotency-Key
+   * row, ticket number and audit rows of a failed attempt roll back with it. Side effects outside the database go
+   * after `tx()` returns or in `afterCommit` (@repairos/db), never inside `fn`.
+   */
   forShop(ctx: TenantContext): TenantDb {
-    return tenantDb(this.base, ctx);
+    return tenantDb(this.base, ctx, { retry: { onRetry: (info) => this.logTxRetry(ctx, info) } });
+  }
+
+  private logTxRetry(ctx: TenantContext, info: TxRetryInfo): void {
+    const what = info.sqlState === '40P01' ? 'deadlock' : info.sqlState === '40001' ? 'serialization failure' : 'rows changed before they were locked';
+    this.logger.warn(
+      `Transaction retry ${info.attempt}/${info.maxRetries} after ${what} (${info.sqlState}) shop=${ctx.shopId} user=${ctx.userId ?? '-'} in ${info.delayMs}ms`,
+    );
   }
 
   forUser<T>(userId: string, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {

@@ -6,6 +6,7 @@ export * from './maintenance';
 export * from './field-crypto';
 export * from './models';
 export * from './scope-args';
+export * from './retry';
 export * from './search';
 export * from './tenant';
 export * from './tickets';

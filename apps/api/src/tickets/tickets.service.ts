@@ -34,17 +34,28 @@ import {
   type DeviceType,
   type TicketIssueInput,
 } from '@repairos/contracts';
-import { decryptField, FieldDecryptError, nextTicketNumber, passcodeAad, passcodeFromRow, type ScopedTx, type TicketEventDataByType } from '@repairos/db';
+import {
+  decryptField,
+  FieldDecryptError,
+  nextTicketNumber,
+  passcodeAad,
+  passcodeFromRow,
+  type ScopedTx,
+  type Ticket,
+  type TicketEventDataByType,
+  TxRetryError,
+} from '@repairos/db';
 import type { Actor } from '../auth/auth-context';
-import { writeAudit } from '../common/audit';
+import { isCheckViolation, isForeignKeyViolation, writeAudit } from '../common/audit';
 import { ApiException, apiError, forbidden, notFound, validationFailed } from '../common/errors';
 import { ZodValidationPipe } from '../common/zod';
 import { CONFIG, type AppConfig } from '../config';
 import { insertCustomer } from '../customers/customer-write';
 import { insertDevice, setDevicePasscode } from '../devices/devices.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { lockCustomers, lockDevices, lockStatuses, lockTickets } from '../repair/locks';
 import { deletePasscodeOfReleasedDevice, deletePasscodeOnClose, lockDevice } from '../repair/passcode';
-import { loadShopInfo, lockCustomers, refreshCustomerCounters, type ShopInfo, ticketDetail, userRefs } from '../repair/read';
+import { loadShopInfo, refreshCustomerCounters, type ShopInfo, ticketDetail, userRefs } from '../repair/read';
 import { toNoteDto } from './ticket-query.service';
 
 /** Output of contracts `UpdateTicketInput` (the controller validates with it). */
@@ -55,6 +66,31 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function transitionError(r: Extract<TransitionResult, { ok: false }>): ApiException {
   if (r.code === 'FORBIDDEN') return forbidden(API_ERROR_MESSAGES.FORBIDDEN);
   return apiError(r.code, undefined, r.message);
+}
+
+/** Constraints a ticket write can still hit if a status it references is changed at the same time (backstop). */
+const STATUS_RACE_FKS = ['tickets_shopId_statusId_statusCategory_fkey', 'tickets_shopId_statusIdBeforeClose_fkey'] as const;
+const STATUS_RACE_CHECKS = ['tickets_closed_at_check', 'tickets_status_before_close_check'] as const;
+export const STATUS_CHANGED_MESSAGE = 'This status was changed at the same time. Refresh and try again.';
+
+/** Maps a leftover status race (the status row lock makes it unreachable in practice) to 409 instead of a 500. */
+export function mapStatusRace(err: unknown): never {
+  if (isForeignKeyViolation(err, STATUS_RACE_FKS) || isCheckViolation(err, STATUS_RACE_CHECKS)) {
+    throw apiError('CONFLICT', undefined, STATUS_CHANGED_MESSAGE);
+  }
+  throw err;
+}
+
+/** Every id in `needed` is among `held` (nulls ignored). */
+const allHeld = (needed: readonly (string | null | undefined)[] = [], held: readonly (string | null | undefined)[] = []) =>
+  needed.every((x) => !x || held.includes(x));
+
+/** What a ticket write will reference, derived from the ticket row (see `lockTicketWrite`). */
+interface TicketLockPlan {
+  /** Statuses the write points the ticket at (statusId, statusIdBeforeClose): locked FOR SHARE. */
+  statuses?: (string | null | undefined)[];
+  /** Customers other than the ticket's own (customer change). */
+  customers?: (string | null | undefined)[];
 }
 
 type Event<K extends keyof TicketEventDataByType> = { type: K; data: TicketEventDataByType[K]; noteId?: string | null; actorUserId?: string | null };
@@ -90,11 +126,37 @@ export class TicketsService {
     });
   }
 
-  /** Row-locks the ticket (status/assign guards re-check the current state inside the transaction). */
+  /** Shop transaction for a ticket write: retried on deadlock (PrismaService.forShop), leftover status races → 409. */
+  private write<T>(actor: Actor, fn: (tx: ScopedTx) => Promise<T>): Promise<T> {
+    return this.db(actor).tx(fn).catch(mapStatusRace);
+  }
+
+  /** Row-locks the ticket (FOR NO KEY UPDATE) and reads it: guards re-check the current state under the lock. */
   private async lockedTicket(tx: ScopedTx, id: string) {
-    await tx.$queryRaw`SELECT "id" FROM "tickets" WHERE "id" = ${id} AND "shopId" = app_current_shop_id() FOR UPDATE`;
+    await lockTickets(tx, [id], 'update');
     const t = await tx.ticket.findFirst({ where: { id } });
     if (!t) throw notFound();
+    return t;
+  }
+
+  /**
+   * Takes a ticket write's locks in the lock order (../repair/locks): the statuses it will reference (FOR SHARE), its
+   * customer(s), then the ticket. `plan` is worked out from an unlocked read of the ticket and again from the locked
+   * row; if the locked row needs a lock that was not taken (it moved to another customer or status meanwhile), the
+   * transaction is rerun (TxRetryError). Holding one lock too many is harmless.
+   */
+  private async lockTicketWrite(tx: ScopedTx, id: string, plan: (t: Ticket) => TicketLockPlan = () => ({})): Promise<Ticket> {
+    const pre = await tx.ticket.findFirst({ where: { id } });
+    if (!pre) throw notFound();
+    const want = plan(pre);
+    await lockStatuses(tx, want.statuses ?? [], 'share');
+    await lockCustomers(tx, [pre.customerId, ...(want.customers ?? [])]);
+    const t = await this.lockedTicket(tx, id);
+    const got = plan(t);
+    const customersHeld = [pre.customerId, ...(want.customers ?? [])];
+    if (!allHeld([t.customerId, ...(got.customers ?? [])], customersHeld) || !allHeld(got.statuses, want.statuses)) {
+      throw new TxRetryError(`ticket ${id} changed before it was locked`);
+    }
     return t;
   }
 
@@ -124,7 +186,7 @@ export class TicketsService {
     if (idempotencyKey !== undefined && !UUID.test(idempotencyKey)) {
       throw validationFailed([{ path: ['Idempotency-Key'], message: 'Use a UUID' }]);
     }
-    return this.db(actor).tx(async (tx) => {
+    return this.write(actor, async (tx) => {
       const shop = await loadShopInfo(tx);
       // A repeat is answered before the body is looked at (contracts: "the body is not compared").
       if (idempotencyKey) {
@@ -147,17 +209,34 @@ export class TicketsService {
         throw forbidden(API_ERROR_MESSAGES.FORBIDDEN);
       }
 
+      // Locks in the lock order (../repair/locks): INITIAL status → customer → warranty ticket(s) → device → number.
+      const initialRef = await tx.ticketStatus.findFirst({ where: { systemRole: 'INITIAL' }, select: { id: true } });
+      if (!initialRef) throw new Error('Shop has no INITIAL status');
+      await lockStatuses(tx, [initialRef.id], 'share');
+
       // Customer
       let customerId: string;
       if (input.newCustomer) {
         customerId = await insertCustomer(tx, actor.shopId, actor.userId, input.newCustomer);
       } else {
         customerId = input.customerId!;
-        await tx.$queryRaw`SELECT "id" FROM "customers" WHERE "id" = ${customerId} AND "shopId" = app_current_shop_id() FOR UPDATE`;
+        await lockCustomers(tx, [customerId]);
         const c = await tx.customer.findFirst({ where: { id: customerId }, select: { erasedAt: true, archivedAt: true } });
         if (!c) throw notFound();
         if (c.erasedAt) throw apiError('CUSTOMER_ERASED');
         if (c.archivedAt) throw apiError('CUSTOMER_ARCHIVED');
+      }
+
+      // Warranty (M2): the original (and the warranty root) FOR SHARE, so a concurrent reopen of the original waits.
+      const warrantySelect = { id: true, deviceId: true, warrantyOfTicketId: true, status: { select: { systemRole: true } } } as const;
+      let original: { id: string; deviceId: string; warrantyOfTicketId: string | null; status: { systemRole: string | null } } | null = null;
+      if (input.warrantyOfTicketId) {
+        const pre = await tx.ticket.findFirst({ where: { id: input.warrantyOfTicketId }, select: warrantySelect });
+        if (!pre) throw notFound();
+        await lockTickets(tx, [pre.id, pre.warrantyOfTicketId], 'share');
+        original = await tx.ticket.findFirst({ where: { id: input.warrantyOfTicketId }, select: warrantySelect });
+        if (!original) throw notFound();
+        if (original.warrantyOfTicketId !== pre.warrantyOfTicketId) throw new TxRetryError('warranty ticket changed before it was locked');
       }
 
       // Device
@@ -190,18 +269,14 @@ export class TicketsService {
       if (input.assigneeUserId) await this.activeAssignee(tx, input.assigneeUserId);
 
       let warrantyRoot: string | null = null;
-      if (input.warrantyOfTicketId) {
-        const original = await tx.ticket.findFirst({
-          where: { id: input.warrantyOfTicketId },
-          select: { id: true, deviceId: true, warrantyOfTicketId: true, status: { select: { systemRole: true } } },
-        });
-        if (!original) throw notFound();
+      if (original) {
         // M2 (tech lead): a Collected ticket for the SAME device.
         if (original.status.systemRole !== 'COLLECTED' || original.deviceId !== deviceId) throw apiError('WARRANTY_NOT_ALLOWED');
         warrantyRoot = original.warrantyOfTicketId ?? original.id;
       }
 
-      const initial = await tx.ticketStatus.findFirst({ where: { systemRole: 'INITIAL' } });
+      // Read under the status lock: the category is the committed one.
+      const initial = await tx.ticketStatus.findFirst({ where: { id: initialRef.id } });
       if (!initial) throw new Error('Shop has no INITIAL status');
       const number = await nextTicketNumber(tx, actor.shopId);
       const ticket = await tx.ticket.create({
@@ -262,9 +337,13 @@ export class TicketsService {
 
   async update(actor: Actor, id: string, parsed: UpdateTicketData, now = new Date()): Promise<TicketDetail> {
     if ((parsed.customerId || parsed.deviceId) && !hasPermission(actor.role, 'customers.manage')) throw forbidden(API_ERROR_MESSAGES.FORBIDDEN);
-    return this.db(actor).tx(async (tx) => {
+    return this.write(actor, async (tx) => {
       const shop = await loadShopInfo(tx);
-      const t = await this.lockedTicket(tx, id);
+      // L1 + lock order: both customers (sorted) before the ticket, so a concurrent erase either commits first (and is
+      // seen below) or waits for this move (and then counts the ticket as open).
+      const t = await this.lockTicketWrite(tx, id, (row) => ({
+        customers: parsed.customerId && parsed.customerId !== row.customerId ? [parsed.customerId] : [],
+      }));
       if (t.statusCategory === 'CLOSED') throw apiError('TICKET_CLOSED');
       if (t.version !== parsed.version) throw new ApiException(409, 'STALE_RECORD', STALE_TICKET_MESSAGE);
 
@@ -282,9 +361,6 @@ export class TicketsService {
       let deviceType = device.type as DeviceType;
       let customerId = t.customerId;
       if (parsed.customerId && parsed.customerId !== t.customerId) {
-        // L1: lock both customers (sorted) before reading the new one, so a concurrent erase either commits first
-        // (and is seen below) or waits for this move (and then counts the ticket as open).
-        await lockCustomers(tx, [t.customerId, parsed.customerId]);
         const c = await tx.customer.findFirst({ where: { id: parsed.customerId }, select: { erasedAt: true, archivedAt: true } });
         if (!c) throw notFound();
         if (c.erasedAt) throw apiError('CUSTOMER_ERASED');
@@ -294,6 +370,8 @@ export class TicketsService {
         events.push({ type: 'customer_changed', data: { fromCustomerId: t.customerId, toCustomerId: customerId } });
       }
       if (parsed.deviceId && (parsed.deviceId !== t.deviceId || customerId !== t.customerId)) {
+        // Old and new device, sorted, before the ticket points at the new one (its FK) and the old one's passcode check.
+        await lockDevices(tx, [t.deviceId, parsed.deviceId]);
         const d = await tx.device.findFirst({ where: { id: parsed.deviceId }, select: { id: true, customerId: true, type: true, brand: true, model: true } });
         if (!d) throw notFound();
         if (d.customerId !== customerId) throw validationFailed([{ path: ['deviceId'], message: 'Choose a device of this customer' }]);
@@ -416,9 +494,11 @@ export class TicketsService {
   // ---------- Status, assign, cancel, reopen ----------
 
   async changeStatus(actor: Actor, id: string, input: ChangeTicketStatusInput, now = new Date()): Promise<TicketDetail> {
-    return this.db(actor).tx(async (tx) => {
+    return this.write(actor, async (tx) => {
       const shop = await loadShopInfo(tx);
-      const t = await this.lockedTicket(tx, id);
+      // Target status FOR SHARE (and the current one, which a close stores as statusIdBeforeClose): a concurrent
+      // re-categorisation waits for this change, or commits first and the read below sees the new category.
+      const t = await this.lockTicketWrite(tx, id, (row) => ({ statuses: [input.statusId, row.statusId] }));
       const target = await tx.ticketStatus.findFirst({ where: { id: input.statusId } });
       if (!target) throw notFound();
       const r = canTransition({ category: t.statusCategory as StatusCategory, id: t.statusId }, { ...target, category: target.category as StatusCategory }, {
@@ -453,7 +533,6 @@ export class TicketsService {
         noteId,
       });
       if (r.closes) {
-        await lockCustomers(tx, [t.customerId]); // lock order: ticket → customer → device
         await deletePasscodeOnClose(tx, { shopId: actor.shopId, ticketId: id, deviceId: t.deviceId, settingOn: shop.deletePasscodeOnClose });
         await refreshCustomerCounters(tx, [t.customerId]);
       }
@@ -462,7 +541,7 @@ export class TicketsService {
   }
 
   async assign(actor: Actor, id: string, input: AssignTicketInput, now = new Date()): Promise<TicketDetail> {
-    return this.db(actor).tx(async (tx) => {
+    return this.write(actor, async (tx) => {
       const shop = await loadShopInfo(tx);
       const t = await this.lockedTicket(tx, id);
       if (t.statusCategory === 'CLOSED') throw apiError('TICKET_CLOSED');
@@ -475,12 +554,12 @@ export class TicketsService {
   }
 
   async cancel(actor: Actor, id: string, input: CancelTicketInput, now = new Date()): Promise<TicketDetail> {
-    return this.db(actor).tx(async (tx) => {
+    return this.write(actor, async (tx) => {
       const shop = await loadShopInfo(tx);
-      const t = await this.lockedTicket(tx, id);
-      const target = input.statusId
-        ? await tx.ticketStatus.findFirst({ where: { id: input.statusId } })
-        : await tx.ticketStatus.findFirst({ where: { systemRole: 'CANCELLED' } });
+      const targetId = input.statusId ?? (await tx.ticketStatus.findFirst({ where: { systemRole: 'CANCELLED' }, select: { id: true } }))?.id;
+      if (!targetId) throw notFound();
+      const t = await this.lockTicketWrite(tx, id, (row) => ({ statuses: [targetId, row.statusId] }));
+      const target = await tx.ticketStatus.findFirst({ where: { id: targetId } });
       if (!target) throw notFound();
       const r = canTransition({ category: t.statusCategory as StatusCategory, id: t.statusId }, { ...target, category: target.category as StatusCategory }, {
         role: actor.role,
@@ -513,7 +592,6 @@ export class TicketsService {
         // A11-b: reason code and ids only; the free-text note stays on the ticket and its timeline (redacted on erase).
         after: { statusId: target.id, reason: input.reason, returnedConfirmed },
       });
-      await lockCustomers(tx, [t.customerId]); // lock order: ticket → customer → device
       await deletePasscodeOnClose(tx, { shopId: actor.shopId, ticketId: id, deviceId: t.deviceId, settingOn: shop.deletePasscodeOnClose });
       await refreshCustomerCounters(tx, [t.customerId]);
       return ticketDetail(tx, id, shop, now);
@@ -521,13 +599,16 @@ export class TicketsService {
   }
 
   async reopen(actor: Actor, id: string, input: ReopenTicketInput, now = new Date()): Promise<TicketDetail> {
-    return this.db(actor).tx(async (tx) => {
+    return this.write(actor, async (tx) => {
       const shop = await loadShopInfo(tx);
-      const t = await this.lockedTicket(tx, id);
-      const targetId = input.statusId ?? t.statusIdBeforeClose;
-      const target = targetId
-        ? await tx.ticketStatus.findFirst({ where: { id: targetId } })
-        : await tx.ticketStatus.findFirst({ where: { systemRole: 'INITIAL' } });
+      const initialId = input.statusId ? null : (await tx.ticketStatus.findFirst({ where: { systemRole: 'INITIAL' }, select: { id: true } }))?.id;
+      const targetOf = (row: Ticket) => input.statusId ?? row.statusIdBeforeClose ?? initialId;
+      // Lock order: target status → customer → ticket. Erase holds the customer while it rewrites the customer's
+      // tickets, so taking the customer before the ticket is what keeps reopen and erase from deadlocking. (Story
+      // §TK-R 4: reopening a ticket of an erased customer is allowed; it shows as "Erased customer".)
+      const t = await this.lockTicketWrite(tx, id, (row) => ({ statuses: [targetOf(row)] }));
+      const targetId = targetOf(t);
+      const target = targetId ? await tx.ticketStatus.findFirst({ where: { id: targetId } }) : null;
       if (!target) throw notFound();
       const r = canTransition({ category: t.statusCategory as StatusCategory, id: t.statusId }, { ...target, category: target.category as StatusCategory }, {
         role: actor.role,
@@ -606,9 +687,10 @@ export class TicketsService {
    */
   async revealPasscode(actor: Actor, ticketId: string, now = new Date()): Promise<PasscodeReveal> {
     const result = await this.db(actor).tx(async (tx) => {
-      // L4: a close holds the ticket FOR UPDATE until it commits; FOR SHARE waits for it, and the read below (a new
+      // L4: a close holds the ticket FOR NO KEY UPDATE until it commits; FOR SHARE waits for it, and the read below (a new
       // statement) then sees the ticket closed. A close that starts after us waits until this reveal commits.
-      await tx.$queryRaw`SELECT "id" FROM "tickets" WHERE "id" = ${ticketId} AND "shopId" = app_current_shop_id() FOR SHARE`;
+      // Lock order: ticket (FOR SHARE) → device (the view counter update).
+      await lockTickets(tx, [ticketId], 'share');
       const t = await tx.ticket.findFirst({ where: { id: ticketId }, select: { id: true, statusCategory: true, deviceId: true } });
       if (!t) throw notFound();
       if (t.statusCategory === 'CLOSED') throw apiError('PASSCODE_NOT_AVAILABLE');

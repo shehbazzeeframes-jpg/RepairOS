@@ -1,5 +1,5 @@
 import type { Page, Request, Route } from '@playwright/test';
-import { ApiError, MeResponse, Shop, permissionsFor } from '@repairos/contracts';
+import { ApiError, MeResponse, Shop, TimeclockStatus, permissionsFor } from '@repairos/contracts';
 
 /** Fixtures are parsed with the shared contracts, so a contract change breaks the mocks loudly. */
 export const USER = { id: 'usr_1', name: 'Alex Morgan', email: 'alex@fixitphones.co.uk' };
@@ -34,6 +34,14 @@ export const ME_NO_SHOP: MeResponse = MeResponse.parse({
   accessRemoved: null,
 });
 
+/** Clocked out, no recent entries (served for every page by default). */
+export const CLOCKED_OUT: TimeclockStatus = TimeclockStatus.parse({
+  serverNow: new Date().toISOString(),
+  openEntry: null,
+  todayMinutes: 0,
+  recentEntries: [],
+});
+
 export function apiError(statusCode: number, code: string, message: string): ApiError {
   return ApiError.parse({ statusCode, code, message });
 }
@@ -43,18 +51,34 @@ type Handler = (route: Route, request: Request) => Promise<void> | void;
 export interface MockApiOptions {
   /** GET /api/me: a body, or null for 401 (signed out). Can be changed later via `state.me`. */
   me: MeResponse | null;
-  /** Extra handlers keyed by "METHOD /api/path". */
+  /**
+   * Extra handlers keyed by "METHOD /api/path". Path segments may be `:params`
+   * ("POST /api/staff/:id/deactivate"); exact keys win over patterns.
+   */
   handlers?: Record<string, Handler>;
 }
 
 export interface MockApiState {
   me: MeResponse | null;
-  calls: { method: string; path: string; body: unknown }[];
+  calls: { method: string; path: string; search: string; body: unknown }[];
+}
+
+function compile(key: string): RegExp {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/:[A-Za-z]+/g, '[^/]+');
+  return new RegExp(`^${escaped}$`);
+}
+
+/** A toast by its text (Astryx also mirrors it into a live region, so scope to the viewport). */
+export function toast(page: Page, text: string | RegExp) {
+  return page.getByRole('region', { name: 'Notifications' }).getByText(text);
 }
 
 /** Intercepts every /api/** request from the page. Unknown routes return a 404 ApiError. */
 export async function mockApi(page: Page, options: MockApiOptions): Promise<MockApiState> {
   const state: MockApiState = { me: options.me, calls: [] };
+  const patterns = Object.entries(options.handlers ?? {}).map(
+    ([key, handler]) => [compile(key), handler] as const,
+  );
   await page.route('**/api/**', async (route, request) => {
     const url = new URL(request.url());
     const key = `${request.method()} ${url.pathname}`;
@@ -64,9 +88,9 @@ export async function mockApi(page: Page, options: MockApiOptions): Promise<Mock
     } catch {
       body = request.postData();
     }
-    state.calls.push({ method: request.method(), path: url.pathname, body });
+    state.calls.push({ method: request.method(), path: url.pathname, search: url.search, body });
 
-    const handler = options.handlers?.[key];
+    const handler = options.handlers?.[key] ?? patterns.find(([re]) => re.test(key))?.[1];
     if (handler) return handler(route, request);
 
     if (key === 'GET /api/me') {
@@ -77,6 +101,7 @@ export async function mockApi(page: Page, options: MockApiOptions): Promise<Mock
             json: apiError(401, 'UNAUTHENTICATED', 'Sign in to continue'),
           });
     }
+    if (key === 'GET /api/timeclock/me') return route.fulfill({ status: 200, json: CLOCKED_OUT });
     if (key === 'POST /api/auth/sign-out') {
       state.me = null;
       return route.fulfill({ status: 200, json: { success: true } });

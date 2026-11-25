@@ -4,7 +4,7 @@ import type { MeResponse } from '@repairos/contracts';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { useMe } from './me';
-import { type GateMode, redirectFor } from './redirects';
+import { type GateMode, type GateOptions, redirectFor } from './redirects';
 
 export type { GateMode };
 
@@ -14,10 +14,10 @@ export type GateState =
   | { status: 'ready'; me: MeResponse | null };
 
 /** Loads GET /api/me and redirects when the user does not belong on this screen. */
-export function useSessionGate(mode: GateMode): GateState {
+export function useSessionGate(mode: GateMode, options: GateOptions = {}): GateState {
   const router = useRouter();
   const query = useMe();
-  const target = query.isSuccess ? redirectFor(mode, query.data) : null;
+  const target = query.isSuccess ? redirectFor(mode, query.data, options) : null;
 
   useEffect(() => {
     if (target) router.replace(target);

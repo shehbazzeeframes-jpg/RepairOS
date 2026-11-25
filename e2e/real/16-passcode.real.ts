@@ -180,8 +180,7 @@ test('PC-06 more than 30 reveals per user per hour → 429 RATE_LIMITED', async 
   );
 });
 
-test('PC-07 (known open item) two open tickets on one device closed at the same moment: passcode still deleted', async () => {
-  test.fail(true, 'KNOWN (open item): passcode not deleted on concurrent close');
+test('PC-07 two open tickets on one device closed at the same moment: passcode still deleted', async () => {
   let kept = 0;
   for (let i = 0; i < 5; i++) {
     const t = await ticketWith({ lockType: 'PIN', value: '4040' });

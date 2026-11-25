@@ -123,10 +123,6 @@ test('CU-02 UK: 07911 123456 + landline 020 7946 0018 (no WhatsApp link) + Postc
 });
 
 test('CU-02b invalid phone is flagged when leaving the field (CU1.2)', async ({ page }) => {
-  test.fail(
-    true,
-    'BUG-01: no phone validation on blur (customer form and check-in quick form); only on submit',
-  );
   const s = await freshShop('GB', 'CustBlur');
   await signInContext(page, s.owner.email);
   await page.goto('/customers/new');
@@ -277,10 +273,6 @@ test('CU-05 list: search any word order + accents, URL state with back button, a
 test('CU-05b customer list: the back button steps back through search/filter changes (CU5.5)', async ({
   page,
 }) => {
-  test.fail(
-    true,
-    'BUG-03: list URL updates use history replace, so Back leaves the page instead of undoing the filter',
-  );
   const s = await freshShop('US', 'CustBack');
   await signInContext(page, s.owner.email);
   await page.goto('/');
@@ -394,8 +386,7 @@ test('CU-07 export: download and inspect (no passcodes, internal notes included 
   expect(after).not.toContain('+44');
 });
 
-test('CU-07b (known open item) A11-c: the export includes internal ticket notes', async () => {
-  test.fail(true, 'KNOWN (open item): export missing notes');
+test('CU-07b A11-c: the export includes internal ticket notes', async () => {
   const s = await freshShop('GB', 'CustExport2');
   const t = await checkIn(s.owner.ctx, {
     newCustomer: {
@@ -547,11 +538,7 @@ test('CU-08 erase: blocked with open tickets, then allowed; customer unfindable 
   expect(reuse.body.code).toBe('CUSTOMER_ERASED');
 });
 
-test('CU-09 (known open item) erase redacts identifiers typed into ticket free text and notes (A11-b)', async () => {
-  test.fail(
-    true,
-    'KNOWN (open item): erase leaves identifiers in ticket free text / notes / audit',
-  );
+test('CU-09 erase redacts identifiers typed into ticket free text and notes (A11-b)', async () => {
   const s = await freshShop('US', 'CustRedact');
   const t = await checkIn(s.owner.ctx, {
     newCustomer: {
@@ -664,7 +651,6 @@ test("CU-10 devices: IMEI Luhn/length errors, serial normalised, another custome
 test('CU-10b a 14-digit IMEI shows the error when leaving the field (screen spec §5: "once 15+ digits or on blur")', async ({
   page,
 }) => {
-  test.fail(true, 'BUG-04: the IMEI error appears only on submit, not on blur');
   const s = await freshShop('US', 'DevBlur');
   const c = await customer(s.owner.ctx, {
     kind: 'PERSON',

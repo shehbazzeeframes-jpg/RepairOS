@@ -423,10 +423,6 @@ test.describe('Check-in safeguards', () => {
   test('CI-09 an invalid phone in the quick form is flagged before moving on (CU1.2: "on leaving the field")', async ({
     page,
   }) => {
-    test.fail(
-      true,
-      'BUG-01: an invalid phone passes "Use this customer"; the error only appears at Create',
-    );
     const s = await freshShop('GB', 'BadPhone');
     await signInContext(page, s.owner.email);
     await openCheckIn(page);

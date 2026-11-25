@@ -1,6 +1,6 @@
 'use client';
 
-import { MeResponse, type Role } from '@repairos/contracts';
+import { MeResponse, ROLE_LABELS, type Role } from '@repairos/contracts';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch, isApiRequestError } from './api';
 
@@ -16,16 +16,15 @@ export async function fetchMe(): Promise<MeResponse | null> {
   }
 }
 
+/** Refetched on window focus (and on any 403, see providers) so role changes apply promptly. */
 export function useMe() {
-  return useQuery({ queryKey: meQueryKey, queryFn: fetchMe, staleTime: 60_000 });
+  return useQuery({
+    queryKey: meQueryKey,
+    queryFn: fetchMe,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+  });
 }
-
-const ROLE_LABELS: Record<Role, string> = {
-  OWNER: 'Owner',
-  MANAGER: 'Manager',
-  FRONT_DESK: 'Front desk',
-  TECHNICIAN: 'Technician',
-};
 
 export function roleLabel(role: Role | null | undefined): string {
   return role ? ROLE_LABELS[role] : 'No role';

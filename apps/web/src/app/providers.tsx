@@ -2,14 +2,28 @@
 
 import { LinkProvider } from '@astryxdesign/core/Link';
 import { Theme } from '@astryxdesign/core/theme';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  MutationCache,
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import NextLink from 'next/link';
 import { useState, type ReactNode } from 'react';
 import { defaultThemeSlug, themes } from '../../astryx-themes';
 import { isApiRequestError } from '@/lib/api';
+import { meQueryKey } from '@/lib/me';
 
 function makeQueryClient() {
-  return new QueryClient({
+  // A 403 may mean the user's role or membership changed: re-read /api/me so the UI catches up.
+  const onError = (error: unknown) => {
+    if (isApiRequestError(error) && error.status === 403) {
+      void client.invalidateQueries({ queryKey: meQueryKey });
+    }
+  };
+  const client: QueryClient = new QueryClient({
+    queryCache: new QueryCache({ onError }),
+    mutationCache: new MutationCache({ onError }),
     defaultOptions: {
       queries: {
         refetchOnWindowFocus: false,
@@ -20,6 +34,7 @@ function makeQueryClient() {
       },
     },
   });
+  return client;
 }
 
 export function Providers({ children }: { children: ReactNode }) {

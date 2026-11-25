@@ -83,15 +83,31 @@ export function phone(country: 'US' | 'GB' | 'PK'): string {
   return `0300 ${t}${n}`;
 }
 
+export type DefaultStatusName =
+  | 'Received'
+  | 'Diagnosing'
+  | 'Awaiting approval'
+  | 'Awaiting parts'
+  | 'In repair'
+  | 'Ready for pickup'
+  | 'Unrepairable'
+  | 'Collected'
+  | 'Cancelled';
+
 export interface Shop2 {
   owner: { email: string; name: string; ctx: APIRequestContext };
   shop: { id: string; name: string };
-  statuses: Record<string, Json>;
+  statuses: Record<DefaultStatusName, Json>;
 }
 
-export async function statusesByName(ctx: APIRequestContext): Promise<Record<string, Json>> {
+export async function statusesByName(
+  ctx: APIRequestContext,
+): Promise<Record<DefaultStatusName, Json>> {
   const list = await ok(ctx, 'GET', '/api/ticket-statuses');
-  return Object.fromEntries((list.items as Json[]).map((s) => [s.name, s]));
+  return Object.fromEntries((list.items as Json[]).map((s) => [s.name, s])) as Record<
+    DefaultStatusName,
+    Json
+  >;
 }
 
 /** Fresh owner + shop (with default statuses). */
@@ -111,7 +127,8 @@ export async function member(
   name?: string,
 ) {
   const email = uniqueEmail(role.toLowerCase().replace('_', ''));
-  const n = name ?? `QA ${role === 'FRONT_DESK' ? 'Desk' : role === 'TECHNICIAN' ? 'Tech' : 'Manager'}`;
+  const n =
+    name ?? `QA ${role === 'FRONT_DESK' ? 'Desk' : role === 'TECHNICIAN' ? 'Tech' : 'Manager'}`;
   const ctx = await addMemberApi(s.owner.ctx, email, role, n);
   const me = await ok(ctx, 'GET', '/api/me');
   return { email, name: n, ctx, userId: me.user.id as string };
@@ -166,5 +183,10 @@ export async function setStatus(
   statusId: string,
   note?: Json,
 ) {
-  return call(ctx, 'POST', `/api/tickets/${ticketId}/status`, note ? { statusId, note } : { statusId });
+  return call(
+    ctx,
+    'POST',
+    `/api/tickets/${ticketId}/status`,
+    note ? { statusId, note } : { statusId },
+  );
 }

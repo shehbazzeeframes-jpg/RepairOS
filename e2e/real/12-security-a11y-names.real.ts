@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import {
+  BASE,
   inviteApi,
   inviteLinkFrom,
   newOwnerShop,
@@ -38,8 +39,8 @@ test('SEC-01 invite and password-reset tokens never reach the API logs (E1.5, Ri
   const email = uniqueEmail('secreset');
   await signUpApi('Sec Reset', email);
   await page.request.post('/api/auth/request-password-reset', {
-    headers: { 'content-type': 'application/json', origin: 'http://localhost:3200' },
-    data: { email, redirectTo: 'http://localhost:3200/reset-password' },
+    headers: { 'content-type': 'application/json', origin: BASE },
+    data: { email, redirectTo: `${BASE}/reset-password` },
   });
   const reset = resetLinkFrom(await waitForEmail(email, /password/i));
   await page.context().clearCookies();

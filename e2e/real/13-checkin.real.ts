@@ -72,17 +72,25 @@ test.describe('Check-in keyboard paths (TK1, TK2)', () => {
     await expect(option).toBeVisible();
     keys.endSearch();
     await keys.press('Enter', true);
-    const device = page.getByRole('radio', { name: /Nintendo Switch OLED|Apple|Samsung|Google/ }).first();
+    const device = page
+      .getByRole('radio', { name: /Nintendo Switch OLED|Apple|Samsung|Google/ })
+      .first();
     await expect(device).toBeFocused();
     await expect(device).toBeChecked();
     await keys.press('Enter', true);
     await expect(page.getByRole('textbox', { name: 'Find an issue' })).toBeFocused();
     // The issue list depends on the device type (Linda's latest device is a console): take the first preset.
-    const firstIssue = (await page
-      .getByRole('group', { name: 'Common issues' })
-      .getByRole('button')
-      .first()
-      .getAttribute('aria-label')) ?? (await page.getByRole('group', { name: 'Common issues' }).getByRole('button').first().innerText());
+    const firstIssue =
+      (await page
+        .getByRole('group', { name: 'Common issues' })
+        .getByRole('button')
+        .first()
+        .getAttribute('aria-label')) ??
+      (await page
+        .getByRole('group', { name: 'Common issues' })
+        .getByRole('button')
+        .first()
+        .innerText());
     await keys.type(firstIssue.trim().slice(0, 3).toLowerCase());
     await keys.press('Enter', true);
     await expect(
@@ -161,7 +169,12 @@ test.describe('Check-in keyboard paths (TK1, TK2)', () => {
     const id = page.url().split('/').pop()!;
     const t = await ok(fd.ctx, 'GET', `/api/tickets/${id}`);
     expect(t.customer.displayName).toBe('Priya Shah');
-    expect(t.device).toMatchObject({ brand: 'Apple', model: 'iPhone 13', imei: theImei, lockType: 'PATTERN' });
+    expect(t.device).toMatchObject({
+      brand: 'Apple',
+      model: 'iPhone 13',
+      imei: theImei,
+      lockType: 'PATTERN',
+    });
     expect(t.device.passcodeOnFile).toBe(true);
     // Stored encrypted: the raw row has ciphertext, never the "1-5-9-6" sequence.
     const raw = sql(
@@ -183,17 +196,29 @@ test.describe('Check-in safeguards', () => {
   test('CI-03 idempotent create: the same Idempotency-Key returns the same ticket (sequential and concurrent)', async () => {
     const s = await freshShop('US', 'Idem');
     const key = uuid();
-    const first = await call(s.owner.ctx, 'POST', '/api/tickets', {
-      newCustomer: { kind: 'PERSON', firstName: 'Idem', phones: [{ number: phone('US') }] },
-      newDevice: { type: 'PHONE', brand: 'Apple', model: 'iPhone 12' },
-      issues: [{ code: 'BATTERY' }],
-    }, { 'Idempotency-Key': key });
+    const first = await call(
+      s.owner.ctx,
+      'POST',
+      '/api/tickets',
+      {
+        newCustomer: { kind: 'PERSON', firstName: 'Idem', phones: [{ number: phone('US') }] },
+        newDevice: { type: 'PHONE', brand: 'Apple', model: 'iPhone 12' },
+        issues: [{ code: 'BATTERY' }],
+      },
+      { 'Idempotency-Key': key },
+    );
     expect(first.status).toBe(201);
-    const again = await call(s.owner.ctx, 'POST', '/api/tickets', {
-      newCustomer: { kind: 'PERSON', firstName: 'Idem', phones: [{ number: phone('US') }] },
-      newDevice: { type: 'PHONE', brand: 'Apple', model: 'iPhone 12' },
-      issues: [{ code: 'BATTERY' }],
-    }, { 'Idempotency-Key': key });
+    const again = await call(
+      s.owner.ctx,
+      'POST',
+      '/api/tickets',
+      {
+        newCustomer: { kind: 'PERSON', firstName: 'Idem', phones: [{ number: phone('US') }] },
+        newDevice: { type: 'PHONE', brand: 'Apple', model: 'iPhone 12' },
+        issues: [{ code: 'BATTERY' }],
+      },
+      { 'Idempotency-Key': key },
+    );
     expect(again.status).toBe(200);
     expect(again.body.id).toBe(first.body.id);
 
@@ -205,20 +230,39 @@ test.describe('Check-in safeguards', () => {
       issues: [{ code: 'BATTERY' }],
     };
     const res = await Promise.all(
-      Array.from({ length: 5 }, () => call(s.owner.ctx, 'POST', '/api/tickets', body, { 'Idempotency-Key': key2 })),
+      Array.from({ length: 5 }, () =>
+        call(s.owner.ctx, 'POST', '/api/tickets', body, { 'Idempotency-Key': key2 }),
+      ),
     );
     const ids = new Set(res.filter((r) => r.status < 300).map((r) => r.body.id));
-    test.info().annotations.push({ type: 'statuses', description: res.map((r) => r.status).join(',') });
+    test
+      .info()
+      .annotations.push({ type: 'statuses', description: res.map((r) => r.status).join(',') });
     expect(ids.size).toBe(1);
-    expect(sql(`select count(*) from customers where "shopId"='${s.shop.id}' and "firstName"='Burst'`)).toBe('1');
+    expect(
+      sql(`select count(*) from customers where "shopId"='${s.shop.id}' and "firstName"='Burst'`),
+    ).toBe('1');
     // Gapless numbers: 1001, 1002.
-    expect(sql(`select string_agg(number::text, ',' order by number) from tickets where "shopId"='${s.shop.id}'`)).toBe('1001,1002');
+    expect(
+      sql(
+        `select string_agg(number::text, ',' order by number) from tickets where "shopId"='${s.shop.id}'`,
+      ),
+    ).toBe('1001,1002');
   });
 
   test('CI-04 double ⌘↵ in the UI creates one ticket', async ({ page }) => {
     const s = await freshShop('US', 'DoubleSubmit');
-    const c = await customer(s.owner.ctx, { kind: 'PERSON', firstName: 'Double', lastName: 'Tap', phones: [{ number: phone('US') }] });
-    await ok(s.owner.ctx, 'POST', `/api/customers/${c.id}/devices`, { type: 'PHONE', brand: 'Google', model: 'Pixel 8' });
+    const c = await customer(s.owner.ctx, {
+      kind: 'PERSON',
+      firstName: 'Double',
+      lastName: 'Tap',
+      phones: [{ number: phone('US') }],
+    });
+    await ok(s.owner.ctx, 'POST', `/api/customers/${c.id}/devices`, {
+      type: 'PHONE',
+      brand: 'Google',
+      model: 'Pixel 8',
+    });
     await signInContext(page, s.owner.email);
     await openCheckIn(page);
     await page.keyboard.type('double tap');
@@ -238,22 +282,40 @@ test.describe('Check-in safeguards', () => {
     await page.keyboard.press('ControlOrMeta+Enter');
     await expect(page.getByRole('heading', { level: 1, name: /^T-\d+$/ })).toBeVisible();
     expect(sql(`select count(*) from tickets where "shopId"='${s.shop.id}'`)).toBe('1');
-    test.info().annotations.push({ type: 'posts', description: `${posts.length} POST(s), keys ${[...new Set(posts)].length}` });
+    test
+      .info()
+      .annotations.push({
+        type: 'posts',
+        description: `${posts.length} POST(s), keys ${[...new Set(posts)].length}`,
+      });
     expect(new Set(posts).size).toBeLessThanOrEqual(1);
   });
 
-  test('CI-05 duplicate warning in check-in (phone of an existing customer) → Use this customer', async ({ page }) => {
+  test('CI-05 duplicate warning in check-in (phone of an existing customer) → Use this customer', async ({
+    page,
+  }) => {
     const s = await freshShop('PK', 'Dupe');
     const ph = phone('PK');
-    const c = await customer(s.owner.ctx, { kind: 'PERSON', firstName: 'Ali', lastName: 'Raza', phones: [{ number: ph }] });
-    await ok(s.owner.ctx, 'POST', `/api/customers/${c.id}/devices`, { type: 'PHONE', brand: 'Infinix', model: 'Hot 30' });
+    const c = await customer(s.owner.ctx, {
+      kind: 'PERSON',
+      firstName: 'Ali',
+      lastName: 'Raza',
+      phones: [{ number: ph }],
+    });
+    await ok(s.owner.ctx, 'POST', `/api/customers/${c.id}/devices`, {
+      type: 'PHONE',
+      brand: 'Infinix',
+      model: 'Hot 30',
+    });
     await signInContext(page, s.owner.email);
     await openCheckIn(page);
     await page.keyboard.type('Ali Again');
     await page.getByRole('option', { name: /New customer “Ali Again”/ }).click();
     // Typed in another format: +92 3xx … must still match.
     const digits = ph.replace(/\D/g, '').slice(1);
-    await page.getByRole('textbox', { name: 'Phone' }).fill(`+92 ${digits.slice(0, 3)} ${digits.slice(3)}`);
+    await page
+      .getByRole('textbox', { name: 'Phone' })
+      .fill(`+92 ${digits.slice(0, 3)} ${digits.slice(3)}`);
     await expect(page.getByText('Already a customer?')).toBeVisible();
     await expect(page.getByText(/Ali Raza/).first()).toBeVisible();
     await page.screenshot({ path: shot2('ci-05-duplicate') });
@@ -267,20 +329,43 @@ test.describe('Check-in safeguards', () => {
     // Nothing typed was saved: still one customer.
     expect(sql(`select count(*) from customers where "shopId"='${s.shop.id}'`)).toBe('1');
     // The API never blocks duplicates (A5).
-    const dup = await call(s.owner.ctx, 'POST', '/api/customers', { kind: 'PERSON', firstName: 'Sister', phones: [{ number: ph }] });
+    const dup = await call(s.owner.ctx, 'POST', '/api/customers', {
+      kind: 'PERSON',
+      firstName: 'Sister',
+      phones: [{ number: ph }],
+    });
     expect(dup.status).toBe(201);
-    const d = await ok(s.owner.ctx, 'GET', `/api/customers/duplicates?phone=${encodeURIComponent(ph)}`);
+    const d = await ok(
+      s.owner.ctx,
+      'GET',
+      `/api/customers/duplicates?phone=${encodeURIComponent(ph)}`,
+    );
     expect(d.items.length).toBe(2);
   });
 
-  test('CI-06 an archived customer is offered "Restore and use" and the ticket is created', async ({ page }) => {
+  test('CI-06 an archived customer is offered "Restore and use" and the ticket is created', async ({
+    page,
+  }) => {
     const s = await freshShop('US', 'Archived');
-    const c = await customer(s.owner.ctx, { kind: 'PERSON', firstName: 'Zelda', lastName: 'Archer', phones: [{ number: phone('US') }] });
-    await ok(s.owner.ctx, 'POST', `/api/customers/${c.id}/devices`, { type: 'PHONE', brand: 'Apple', model: 'iPhone 14' });
+    const c = await customer(s.owner.ctx, {
+      kind: 'PERSON',
+      firstName: 'Zelda',
+      lastName: 'Archer',
+      phones: [{ number: phone('US') }],
+    });
+    await ok(s.owner.ctx, 'POST', `/api/customers/${c.id}/devices`, {
+      type: 'PHONE',
+      brand: 'Apple',
+      model: 'iPhone 14',
+    });
     await ok(s.owner.ctx, 'POST', `/api/customers/${c.id}/archive`, {});
     // API refuses a ticket for an archived customer.
     const dev = (await ok(s.owner.ctx, 'GET', `/api/customers/${c.id}/devices`)).items[0];
-    const refused = await call(s.owner.ctx, 'POST', '/api/tickets', { customerId: c.id, deviceId: dev.id, issues: [{ code: 'BATTERY' }] });
+    const refused = await call(s.owner.ctx, 'POST', '/api/tickets', {
+      customerId: c.id,
+      deviceId: dev.id,
+      issues: [{ code: 'BATTERY' }],
+    });
     expect(refused.status).toBe(409);
     expect(refused.body.code).toBe('CUSTOMER_ARCHIVED');
 
@@ -300,12 +385,28 @@ test.describe('Check-in safeguards', () => {
     expect(after.archivedAt).toBeNull();
   });
 
-  test('CI-07 scanning a full IMEI into Find customer picks customer and device; Enter from the scanner jumps to Issues', async ({ page }) => {
+  test('CI-07 scanning a full IMEI into Find customer picks customer and device; Enter from the scanner jumps to Issues', async ({
+    page,
+  }) => {
     const s = await freshShop('US', 'Scan');
     const theImei = imei(Date.now() + 7);
-    const c = await customer(s.owner.ctx, { kind: 'PERSON', firstName: 'Sam', lastName: 'Scanner', phones: [{ number: phone('US') }] });
-    await ok(s.owner.ctx, 'POST', `/api/customers/${c.id}/devices`, { type: 'PHONE', brand: 'Apple', model: 'iPhone 11' });
-    await ok(s.owner.ctx, 'POST', `/api/customers/${c.id}/devices`, { type: 'PHONE', brand: 'Samsung', model: 'Galaxy S23', imei: theImei });
+    const c = await customer(s.owner.ctx, {
+      kind: 'PERSON',
+      firstName: 'Sam',
+      lastName: 'Scanner',
+      phones: [{ number: phone('US') }],
+    });
+    await ok(s.owner.ctx, 'POST', `/api/customers/${c.id}/devices`, {
+      type: 'PHONE',
+      brand: 'Apple',
+      model: 'iPhone 11',
+    });
+    await ok(s.owner.ctx, 'POST', `/api/customers/${c.id}/devices`, {
+      type: 'PHONE',
+      brand: 'Samsung',
+      model: 'Galaxy S23',
+      imei: theImei,
+    });
     await signInContext(page, s.owner.email);
     await openCheckIn(page);
     // A scanner types fast and sends Enter.
@@ -319,8 +420,13 @@ test.describe('Check-in safeguards', () => {
     expect(JSON.stringify(list)).toContain('Galaxy S23');
   });
 
-  test('CI-09 an invalid phone in the quick form is flagged before moving on (CU1.2: "on leaving the field")', async ({ page }) => {
-    test.fail(true, 'BUG-01: an invalid phone passes "Use this customer"; the error only appears at Create');
+  test('CI-09 an invalid phone in the quick form is flagged before moving on (CU1.2: "on leaving the field")', async ({
+    page,
+  }) => {
+    test.fail(
+      true,
+      'BUG-01: an invalid phone passes "Use this customer"; the error only appears at Create',
+    );
     const s = await freshShop('GB', 'BadPhone');
     await signInContext(page, s.owner.email);
     await openCheckIn(page);
@@ -332,13 +438,23 @@ test.describe('Check-in safeguards', () => {
     await page.keyboard.press('Enter');
     const phoneBox = page.getByRole('textbox', { name: 'Phone' });
     await page.waitForTimeout(500);
-    const flagged = (await phoneBox.count()) > 0 && (await phoneBox.getAttribute('aria-invalid')) === 'true';
+    const flagged =
+      (await phoneBox.count()) > 0 && (await phoneBox.getAttribute('aria-invalid')) === 'true';
     const active = await page.evaluate(() => {
       const el = document.activeElement as HTMLElement | null;
-      return el?.getAttribute('aria-label') ?? (el?.id ? document.querySelector(`label[for="${el.id}"]`)?.textContent : '') ?? '';
+      return (
+        el?.getAttribute('aria-label') ??
+        (el?.id ? document.querySelector(`label[for="${el.id}"]`)?.textContent : '') ??
+        ''
+      );
     });
     const modelFocused = /Model/.test(active ?? '');
-    test.info().annotations.push({ type: 'observed', description: `aria-invalid after Enter: ${flagged}; moved to Model: ${modelFocused}` });
+    test
+      .info()
+      .annotations.push({
+        type: 'observed',
+        description: `aria-invalid after Enter: ${flagged}; moved to Model: ${modelFocused}`,
+      });
     await page.screenshot({ path: shot2('ci-09-invalid-phone-accepted') });
     expect(modelFocused).toBe(false);
     await expect(phoneBox).toHaveAttribute('aria-invalid', 'true');
@@ -354,14 +470,20 @@ test.describe('Check-in safeguards', () => {
     await page.getByRole('textbox', { name: 'Phone' }).fill(phone('US'));
     await page.keyboard.press('Enter');
     await page.keyboard.type('pixel 8');
-    await page.getByRole('option', { name: /Pixel 8$/ }).first().click();
+    await page
+      .getByRole('option', { name: /Pixel 8$/ })
+      .first()
+      .click();
     await page.getByRole('radio', { name: 'PIN/passcode' }).click();
     await page.getByLabel('PIN/passcode').fill('8642');
     await page.getByRole('button', { name: 'Use this device' }).click();
     await page.keyboard.type('scr');
     await page.keyboard.press('Enter');
     const stored = await page.evaluate(() =>
-      Object.entries(localStorage).filter(([k]) => k.startsWith('repairos:checkin-draft:')).map(([, v]) => v).join(''),
+      Object.entries(localStorage)
+        .filter(([k]) => k.startsWith('repairos:checkin-draft:'))
+        .map(([, v]) => v)
+        .join(''),
     );
     expect(stored).toContain('SCREEN_CRACKED');
     expect(stored).not.toContain('8642');

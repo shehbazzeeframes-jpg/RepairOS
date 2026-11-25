@@ -1,6 +1,16 @@
 import { expect, test } from '@playwright/test';
 import { auditEvents, signInContext, sql } from './support/stack';
-import { call, checkIn, freshShop, member, ok, phone, shot2, type Json, type Shop2 } from './support/sprint2';
+import {
+  call,
+  checkIn,
+  freshShop,
+  member,
+  ok,
+  phone,
+  shot2,
+  type Json,
+  type Shop2,
+} from './support/sprint2';
 
 /** DV3–DV5, A15: passcode storage, reveal (30 s, audited, rate-limited), closed-ticket denial, delete on close. */
 
@@ -17,15 +27,24 @@ test.beforeAll(async () => {
 
 async function ticketWith(passcode: Json): Promise<Json> {
   return checkIn(fd.ctx, {
-    newCustomer: { kind: 'PERSON', firstName: 'Lock', lastName: `Owner${Date.now() % 10000}`, phones: [{ number: phone('GB') }] },
+    newCustomer: {
+      kind: 'PERSON',
+      firstName: 'Lock',
+      lastName: `Owner${Date.now() % 10000}`,
+      phones: [{ number: phone('GB') }],
+    },
     newDevice: { type: 'PHONE', brand: 'Samsung', model: 'Galaxy S23', passcode },
   });
 }
 
-test('PC-01 technician reveals a PIN: POST, no-store, shown with a countdown, hidden after 30 s, audited, view count', async ({ page }) => {
+test('PC-01 technician reveals a PIN: POST, no-store, shown with a countdown, hidden after 30 s, audited, view count', async ({
+  page,
+}) => {
   const t = await ticketWith({ lockType: 'PIN', value: '007391' });
   // At rest: ciphertext only, never the PIN; reads return only lockType.
-  const raw = sql(`select coalesce(encode("passcodeCiphertext",'escape'),'') || '|' || coalesce("passcodeKeyVersion"::text, '') from devices where id='${t.device.id}'`);
+  const raw = sql(
+    `select coalesce(encode("passcodeCiphertext",'escape'),'') || '|' || coalesce("passcodeKeyVersion"::text, '') from devices where id='${t.device.id}'`,
+  );
   expect(raw).not.toContain('007391');
   const detail = await ok(fd.ctx, 'GET', `/api/tickets/${t.id}`);
   expect(JSON.stringify(detail)).not.toContain('007391');
@@ -46,7 +65,9 @@ test('PC-01 technician reveals a PIN: POST, no-store, shown with a countdown, hi
   await page.screenshot({ path: shot2('pc-01-revealed') });
   expect(page.url()).not.toContain('007391');
   expect(await page.title()).not.toContain('007391');
-  const storage = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
+  const storage = await page.evaluate(
+    () => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }),
+  );
   expect(storage).not.toContain('007391');
   await expect(page.getByRole('button', { name: /copy/i })).toHaveCount(0);
   await page.clock.runFor(31_000);
@@ -58,7 +79,11 @@ test('PC-01 technician reveals a PIN: POST, no-store, shown with a countdown, hi
   const viewed = ev.filter((e) => e.action === 'device.passcode_viewed');
   expect(viewed.length).toBeGreaterThanOrEqual(1);
   expect(JSON.stringify(viewed)).not.toContain('007391');
-  expect(sql(`select after::text from audit_logs where action='device.passcode_viewed' and "entityId"='${t.device.id}'`)).toContain(t.id);
+  expect(
+    sql(
+      `select after::text from audit_logs where action='device.passcode_viewed' and "entityId"='${t.device.id}'`,
+    ),
+  ).toContain(t.id);
 });
 
 test('PC-02 pattern reveal shows the read-only grid with the order', async ({ page }) => {
@@ -70,7 +95,9 @@ test('PC-02 pattern reveal shows the read-only grid with the order', async ({ pa
   await page.screenshot({ path: shot2('pc-02-pattern') });
 });
 
-test('PC-03 closed ticket: no button, API 403 PASSCODE_NOT_AVAILABLE; customer page never reveals', async ({ page }) => {
+test('PC-03 closed ticket: no button, API 403 PASSCODE_NOT_AVAILABLE; customer page never reveals', async ({
+  page,
+}) => {
   // Keep the passcode on close (setting off) so the closed-ticket guard itself is tested.
   await ok(s.owner.ctx, 'PATCH', '/api/shop/ticket-settings', { deletePasscodeOnClose: false });
   const t = await ticketWith({ lockType: 'PIN', value: '5566' });
@@ -89,21 +116,29 @@ test('PC-03 closed ticket: no button, API 403 PASSCODE_NOT_AVAILABLE; customer p
 
 test('PC-04 delete passcode on close (setting on): deleted when the last open ticket closes; kept while another is open', async () => {
   const t = await ticketWith({ lockType: 'PIN', value: '2468' });
-  const second = await checkIn(fd.ctx, { customerId: t.customer.id, deviceId: t.device.id, issues: [{ code: 'BATTERY' }] });
+  const second = await checkIn(fd.ctx, {
+    customerId: t.customer.id,
+    deviceId: t.device.id,
+    issues: [{ code: 'BATTERY' }],
+  });
   await ok(fd.ctx, 'POST', `/api/tickets/${t.id}/cancel`, { reason: 'DUPLICATE' });
   let d = await ok(fd.ctx, 'GET', `/api/tickets/${second.id}`);
   expect(d.device.passcodeOnFile).toBe(true);
   await ok(fd.ctx, 'POST', `/api/tickets/${second.id}/cancel`, { reason: 'CREATED_BY_MISTAKE' });
   d = await ok(fd.ctx, 'GET', `/api/tickets/${second.id}`);
   expect(d.device.passcodeOnFile).toBe(false);
-  expect(sql(`select "passcodeCiphertext" is null from devices where id='${t.device.id}'`)).toBe('t');
+  expect(sql(`select "passcodeCiphertext" is null from devices where id='${t.device.id}'`)).toBe(
+    't',
+  );
   const tl = await ok(fd.ctx, 'GET', `/api/tickets/${second.id}/timeline?filter=all`);
   expect((tl.items as Json[]).map((i) => i.type)).toContain('passcode_deleted');
 });
 
 test('PC-05 passcode never in export, timeline or audit; changing it is audited without the value', async () => {
   const t = await ticketWith({ lockType: 'PASSWORD', value: 'Hunter2-secret' });
-  await ok(fd.ctx, 'PATCH', `/api/devices/${t.device.id}`, { passcode: { lockType: 'PIN', value: '9911' } });
+  await ok(fd.ctx, 'PATCH', `/api/devices/${t.device.id}`, {
+    passcode: { lockType: 'PIN', value: '9911' },
+  });
   const ev = await auditEvents(s.owner.ctx);
   const changed = ev.filter((e) => e.action === 'device.passcode_changed');
   expect(changed.length).toBeGreaterThanOrEqual(1);
@@ -118,21 +153,31 @@ test('PC-05 passcode never in export, timeline or audit; changing it is audited 
   const tl = await ok(fd.ctx, 'GET', `/api/tickets/${t.id}/timeline?filter=all`);
   expect(JSON.stringify(tl)).not.toContain('9911');
   // Technicians can't set passcodes (customers.manage).
-  const byTech = await call(tech.ctx, 'PATCH', `/api/devices/${t.device.id}`, { passcode: { lockType: 'NONE' } });
+  const byTech = await call(tech.ctx, 'PATCH', `/api/devices/${t.device.id}`, {
+    passcode: { lockType: 'NONE' },
+  });
   expect(byTech.status).toBe(403);
 });
 
 test('PC-06 more than 30 reveals per user per hour → 429 RATE_LIMITED', async () => {
   const t = await ticketWith({ lockType: 'PIN', value: '1357' });
   const statuses: number[] = [];
-  for (let i = 0; i < 31; i++) statuses.push((await call(fd.ctx, 'POST', `/api/tickets/${t.id}/passcode/reveal`)).status);
+  for (let i = 0; i < 31; i++)
+    statuses.push((await call(fd.ctx, 'POST', `/api/tickets/${t.id}/passcode/reveal`)).status);
   // PC-02 already used one reveal for this user.
   const first429 = statuses.indexOf(429);
-  test.info().annotations.push({ type: 'observed', description: `first 429 at reveal #${first429 + 2} (incl. PC-02)` });
+  test
+    .info()
+    .annotations.push({
+      type: 'observed',
+      description: `first 429 at reveal #${first429 + 2} (incl. PC-02)`,
+    });
   expect(first429).toBeGreaterThan(25);
   expect(statuses.slice(0, first429).every((x) => x === 200)).toBe(true);
   // Another user is not affected.
-  expect((await call(s.owner.ctx, 'POST', `/api/tickets/${t.id}/passcode/reveal`)).status).toBe(200);
+  expect((await call(s.owner.ctx, 'POST', `/api/tickets/${t.id}/passcode/reveal`)).status).toBe(
+    200,
+  );
 });
 
 test('PC-07 (known open item) two open tickets on one device closed at the same moment: passcode still deleted', async () => {
@@ -140,13 +185,25 @@ test('PC-07 (known open item) two open tickets on one device closed at the same 
   let kept = 0;
   for (let i = 0; i < 5; i++) {
     const t = await ticketWith({ lockType: 'PIN', value: '4040' });
-    const second = await checkIn(fd.ctx, { customerId: t.customer.id, deviceId: t.device.id, issues: [{ code: 'BATTERY' }] });
+    const second = await checkIn(fd.ctx, {
+      customerId: t.customer.id,
+      deviceId: t.device.id,
+      issues: [{ code: 'BATTERY' }],
+    });
     await Promise.all([
       call(fd.ctx, 'POST', `/api/tickets/${t.id}/cancel`, { reason: 'DUPLICATE' }),
       call(s.owner.ctx, 'POST', `/api/tickets/${second.id}/cancel`, { reason: 'DUPLICATE' }),
     ]);
-    if (sql(`select "passcodeCiphertext" is not null from devices where id='${t.device.id}'`) === 't') kept += 1;
+    if (
+      sql(`select "passcodeCiphertext" is not null from devices where id='${t.device.id}'`) === 't'
+    )
+      kept += 1;
   }
-  test.info().annotations.push({ type: 'observed', description: `passcode kept after concurrent close in ${kept}/5 runs` });
+  test
+    .info()
+    .annotations.push({
+      type: 'observed',
+      description: `passcode kept after concurrent close in ${kept}/5 runs`,
+    });
   expect(kept).toBe(0);
 });

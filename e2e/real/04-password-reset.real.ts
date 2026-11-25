@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { resetLinkFrom, shot, signUpApi, uniqueEmail, waitForEmail } from './support/stack';
+import { BASE, resetLinkFrom, shot, signUpApi, uniqueEmail, waitForEmail } from './support/stack';
 
 test.describe('Forgot / reset password (D4)', () => {
   test('PWD-01 request a reset, use the outbox link, sign in with the new password; the link is single-use', async ({
@@ -21,7 +21,7 @@ test.describe('Forgot / reset password (D4)', () => {
     const mail = await waitForEmail(email, /password/i);
     const link = resetLinkFrom(mail);
     test.info().annotations.push({ type: 'reset subject', description: mail.subject });
-    expect(link).toContain('http://localhost:3200/');
+    expect(link).toContain(`${BASE}/`);
 
     // Follow it via the dev outbox page, like a developer would.
     await page.goto('/dev/outbox');

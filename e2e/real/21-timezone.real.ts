@@ -5,7 +5,16 @@ import { checkIn, freshShop, ok, shot2, type Json } from './support/sprint2';
 /** DU1 / A16: due dates, overdue and due-today in the shop's timezone (PK: Asia/Karachi, UTC+5, no DST), plus DST (US/UK). */
 
 function localParts(iso: string, tz: string) {
-  const f = new Intl.DateTimeFormat('en-GB', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short' });
+  const f = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    weekday: 'short',
+  });
   return Object.fromEntries(f.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
 }
 
@@ -18,7 +27,12 @@ test('TZ-01 PK default due = 2 open days at closing time (19:00 Karachi, Sunday 
   expect(`${p.hour}:${p.minute}`).toBe('19:00');
   expect(p.weekday).not.toBe('Sun');
   expect(t.dueHasTime).toBe(false);
-  test.info().annotations.push({ type: 'observed', description: `now ${new Date().toISOString()} → default due ${t.dueAt} (${p.weekday} ${p.day}/${p.month} ${p.hour}:${p.minute} Karachi)` });
+  test
+    .info()
+    .annotations.push({
+      type: 'observed',
+      description: `now ${new Date().toISOString()} → default due ${t.dueAt} (${p.weekday} ${p.day}/${p.month} ${p.hour}:${p.minute} Karachi)`,
+    });
   // Explicit Sunday (closed) → 23:59 local.
   const sunday = await checkIn(s.owner.ctx, { dueDate: '2026-12-06' });
   expect(sunday.dueAt).toBe('2026-12-06T18:59:00.000Z');
@@ -37,23 +51,36 @@ test('TZ-02 PK overdue / due today follow Karachi dates, not UTC dates', async (
   const [a, b, c, d] = [await mk(), await mk(), await mk(), await mk()];
   const kToday = sql(`select (now() at time zone 'Asia/Karachi')::date`);
   // a: today 00:30 Karachi (= previous UTC day 19:30) → due today AND overdue (already past, unless it's 00:00–00:30 there).
-  sql(`update tickets set "dueAt" = ('${kToday} 00:30'::timestamp at time zone 'Asia/Karachi'), "dueHasTime"=true where id='${a.id}'`);
+  sql(
+    `update tickets set "dueAt" = ('${kToday} 00:30'::timestamp at time zone 'Asia/Karachi'), "dueHasTime"=true where id='${a.id}'`,
+  );
   // b: tomorrow 00:10 Karachi (may be "today" in UTC) → neither.
-  sql(`update tickets set "dueAt" = (('${kToday}'::date + 1) + time '00:10') at time zone 'Asia/Karachi', "dueHasTime"=true where id='${b.id}'`);
+  sql(
+    `update tickets set "dueAt" = (('${kToday}'::date + 1) + time '00:10') at time zone 'Asia/Karachi', "dueHasTime"=true where id='${b.id}'`,
+  );
   // c: yesterday 23:50 Karachi → overdue, not due today.
-  sql(`update tickets set "dueAt" = (('${kToday}'::date - 1) + time '23:50') at time zone 'Asia/Karachi', "dueHasTime"=true where id='${c.id}'`);
+  sql(
+    `update tickets set "dueAt" = (('${kToday}'::date - 1) + time '23:50') at time zone 'Asia/Karachi', "dueHasTime"=true where id='${c.id}'`,
+  );
   // d: today 23:59 Karachi → due today, not overdue.
-  sql(`update tickets set "dueAt" = ('${kToday} 23:59'::timestamp at time zone 'Asia/Karachi'), "dueHasTime"=true where id='${d.id}'`);
+  sql(
+    `update tickets set "dueAt" = ('${kToday} 23:59'::timestamp at time zone 'Asia/Karachi'), "dueHasTime"=true where id='${d.id}'`,
+  );
   const counts = await ok(s.owner.ctx, 'GET', '/api/tickets/counts');
-  const pastHalfPast = sql(`select (now() at time zone 'Asia/Karachi')::time > time '00:30'`) === 't';
+  const pastHalfPast =
+    sql(`select (now() at time zone 'Asia/Karachi')::time > time '00:30'`) === 't';
   expect(counts.dueToday).toBe(2);
   expect(counts.overdue).toBe(pastHalfPast ? 2 : 1);
-  const overdue = (await ok(s.owner.ctx, 'GET', '/api/tickets?view=overdue')).items.map((i: Json) => i.id);
+  const overdue = (await ok(s.owner.ctx, 'GET', '/api/tickets?view=overdue')).items.map(
+    (i: Json) => i.id,
+  );
   expect(overdue).toContain(c.id);
   expect(overdue).not.toContain(b.id);
   expect(overdue).not.toContain(d.id);
   // Ready tickets are never overdue.
-  await ok(s.owner.ctx, 'POST', `/api/tickets/${c.id}/status`, { statusId: s.statuses['Ready for pickup'].id });
+  await ok(s.owner.ctx, 'POST', `/api/tickets/${c.id}/status`, {
+    statusId: s.statuses['Ready for pickup'].id,
+  });
   expect((await ok(s.owner.ctx, 'GET', '/api/tickets/counts')).overdue).toBe(pastHalfPast ? 1 : 0);
   // UI: dashboard tiles agree; the list shows day-first dates for PK (en-GB).
   await signInContext(page, s.owner.email);
@@ -63,7 +90,12 @@ test('TZ-02 PK overdue / due today follow Karachi dates, not UTC dates', async (
   await expect(page.getByRole('link', { name: `Overdue: ${c2.overdue}` })).toBeVisible();
   await page.goto(`/tickets/${b.id}`);
   const header = await page.getByRole('main').innerText();
-  test.info().annotations.push({ type: 'observed', description: `PK header due text: ${header.split('\n').slice(0, 4).join(' | ')}` });
+  test
+    .info()
+    .annotations.push({
+      type: 'observed',
+      description: `PK header due text: ${header.split('\n').slice(0, 4).join(' | ')}`,
+    });
   await page.screenshot({ path: shot2('tz-02-pk-ticket') });
 });
 

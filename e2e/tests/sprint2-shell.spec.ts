@@ -6,8 +6,12 @@ import { ME_WITH_SHOP, SHOP, USER, toast } from './support/mock-api';
 import { ST, mockSprint2, newWorld } from './support/sprint2';
 
 async function axe(page: Page) {
-  const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-  expect(result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
+  const result = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  expect(
+    result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`),
+  ).toEqual([]);
 }
 
 test.describe('dashboard', () => {
@@ -67,7 +71,9 @@ test.describe('global search', () => {
     await page.getByRole('heading', { level: 1 }).click();
     await page.keyboard.press('n');
     await expect(page).toHaveURL(/\/tickets\/new$/);
-    await expect(page.getByRole('navigation', { name: 'Shop' }).getByRole('link', { name: 'New ticket' })).toHaveAttribute('href', '/tickets/new');
+    await expect(
+      page.getByRole('navigation', { name: 'Shop' }).getByRole('link', { name: 'New ticket' }),
+    ).toHaveAttribute('href', '/tickets/new');
   });
 });
 
@@ -78,9 +84,21 @@ test.describe('settings', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Ticket statuses' })).toBeVisible();
     await page.getByRole('button', { name: 'Actions for Diagnosing' }).click();
     await page.getByRole('menuitem', { name: 'Move down' }).click();
-    await expect.poll(() => api.state.calls.find((c) => c.path === '/api/ticket-statuses/order')?.body).toMatchObject({
-      ids: [ST.received, ST.approval, ST.diagnosing, ST.parts, ST.inRepair, ST.ready, ST.unrepairable, ST.collected, ST.cancelled],
-    });
+    await expect
+      .poll(() => api.state.calls.find((c) => c.path === '/api/ticket-statuses/order')?.body)
+      .toMatchObject({
+        ids: [
+          ST.received,
+          ST.approval,
+          ST.diagnosing,
+          ST.parts,
+          ST.inRepair,
+          ST.ready,
+          ST.unrepairable,
+          ST.collected,
+          ST.cancelled,
+        ],
+      });
     // System statuses can't be hidden.
     await page.getByRole('button', { name: 'Actions for Received' }).click();
     await expect(page.getByRole('menuitem', { name: 'Hide' })).toHaveCount(0);
@@ -92,7 +110,9 @@ test.describe('settings', () => {
     await dialog.getByRole('switch', { name: 'Requires a note' }).click();
     await dialog.getByRole('button', { name: 'Add status' }).click();
     await expect(toast(page, 'Awaiting customer added')).toBeVisible();
-    expect(api.state.calls.find((c) => c.method === 'POST' && c.path === '/api/ticket-statuses')?.body).toMatchObject({
+    expect(
+      api.state.calls.find((c) => c.method === 'POST' && c.path === '/api/ticket-statuses')?.body,
+    ).toMatchObject({
       name: 'Awaiting customer',
       category: 'WAITING',
       requiresNote: true,
@@ -114,14 +134,23 @@ test.describe('settings', () => {
   test('front desk and technicians get NoAccess on settings pages by URL', async ({ page }) => {
     await mockSprint2(page, { me: meAs('FRONT_DESK') });
     await page.goto('/settings/statuses');
-    await expect(page.getByRole('heading', { name: "You don't have access to this page" })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: "You don't have access to this page" }),
+    ).toBeVisible();
     await page.goto('/settings/tickets');
-    await expect(page.getByRole('heading', { name: "You don't have access to this page" })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: "You don't have access to this page" }),
+    ).toBeVisible();
   });
 });
 
 const OTHER_SHOP = Shop.parse({ ...SHOP, id: 'shp_2', name: 'Fix It Phones Leeds' });
-const membership = (s: Shop) => ({ shopId: s.id, shopName: s.name, role: 'OWNER' as const, status: 'ACTIVE' as const });
+const membership = (s: Shop) => ({
+  shopId: s.id,
+  shopName: s.name,
+  role: 'OWNER' as const,
+  status: 'ACTIVE' as const,
+});
 const meIn = (s: Shop) =>
   MeResponse.parse({
     user: USER,
@@ -132,7 +161,9 @@ const meIn = (s: Shop) =>
     accessRemoved: null,
   });
 
-test('A13: switching shop in one tab never writes to the wrong shop from the other, and says so', async ({ context }) => {
+test('A13: switching shop in one tab never writes to the wrong shop from the other, and says so', async ({
+  context,
+}) => {
   // One world (the server) and one browser context (shared cookies/storage), two tabs.
   const world = newWorld(meIn(SHOP));
   const tabA = await context.newPage();
@@ -161,12 +192,18 @@ test('A13: switching shop in one tab never writes to the wrong shop from the oth
   await tabA.goto('/');
   await tabA.getByRole('button', { name: 'Account: Alex Morgan' }).click();
   await tabA.getByRole('menuitemradio', { name: /Fix It Phones Leeds/ }).click();
-  await expect(tabA.getByRole('navigation', { name: 'Shop' }).getByText('Fix It Phones Leeds').first()).toBeVisible();
+  await expect(
+    tabA.getByRole('navigation', { name: 'Shop' }).getByText('Fix It Phones Leeds').first(),
+  ).toBeVisible();
 
   // Tab B creates: the API refuses (X-Shop-Id is still shop 1) and the tab moves to Leeds with the banner.
   await tabB.keyboard.press('ControlOrMeta+Enter');
-  await expect(tabB.getByText("You're now working in Fix It Phones Leeds. This page was reloaded.")).toBeVisible();
-  await expect(tabB.getByRole('navigation', { name: 'Shop' }).getByText('Fix It Phones Leeds').first()).toBeVisible();
+  await expect(
+    tabB.getByText("You're now working in Fix It Phones Leeds. This page was reloaded."),
+  ).toBeVisible();
+  await expect(
+    tabB.getByRole('navigation', { name: 'Shop' }).getByText('Fix It Phones Leeds').first(),
+  ).toBeVisible();
 
   const creates = world.created;
   expect(creates).toHaveLength(1);
@@ -175,6 +212,8 @@ test('A13: switching shop in one tab never writes to the wrong shop from the oth
   expect(world.tickets.some((t) => t.id === 'tkt_1043')).toBe(false);
   expect(world.writes.every((w) => w.shopId === SHOP.id || w.shopId === null)).toBe(true);
   // The draft stays under the original shop's key.
-  const draftKeys = await tabB.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('repairos:checkin-draft:')));
+  const draftKeys = await tabB.evaluate(() =>
+    Object.keys(localStorage).filter((k) => k.startsWith('repairos:checkin-draft:')),
+  );
   expect(draftKeys).toEqual([`repairos:checkin-draft:${USER.id}:${SHOP.id}`]);
 });

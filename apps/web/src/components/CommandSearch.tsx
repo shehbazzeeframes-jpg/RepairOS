@@ -191,7 +191,8 @@ export function CommandSearch({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Enter' || e.isComposing) return;
       const input = document.activeElement;
-      if (!(input instanceof HTMLInputElement) || input.getAttribute('aria-activedescendant')) return;
+      if (!(input instanceof HTMLInputElement) || input.getAttribute('aria-activedescendant'))
+        return;
       const href = source.top.current ? source.hrefs.get(source.top.current) : undefined;
       if (!href) return;
       e.preventDefault();

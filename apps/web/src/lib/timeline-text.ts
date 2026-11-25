@@ -30,11 +30,11 @@ export const FIELD_LABELS: Record<string, string> = {
   priority: 'priority',
 };
 
-const CHECKLIST_LABEL = new Map<string, string>(
-  Object.values(CHECKLIST_ITEMS_BY_DEVICE_TYPE)
-    .flat()
-    .map((i) => [i.key, i.label]),
-);
+/** Item label by key; the first device type that has it wins (phones first). */
+const CHECKLIST_LABEL = new Map<string, string>();
+for (const item of Object.values(CHECKLIST_ITEMS_BY_DEVICE_TYPE).flat()) {
+  if (!CHECKLIST_LABEL.has(item.key)) CHECKLIST_LABEL.set(item.key, item.label);
+}
 
 export function fieldLabel(field: string): string {
   if (field.startsWith('checklist.')) {

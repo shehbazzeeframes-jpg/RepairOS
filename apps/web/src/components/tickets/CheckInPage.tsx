@@ -281,7 +281,26 @@ export function CheckInPage({ prefill }: { prefill: CheckInPrefill }) {
 
   let initial: Partial<CheckInState> | null = null;
   let warrantyLabel: string | null = null;
-  if (warranty.data) {
+  let warrantyWarning: string | null = null;
+  if (warranty.data && warranty.data.status.systemRole !== 'COLLECTED') {
+    // M2: only a collected ticket can have a warranty ticket. Say so now, not at Create, and start a
+    // normal check-in for the same customer and device instead.
+    const t = warranty.data;
+    warrantyWarning = `${t.numberLabel} hasn't been collected, so this can't be a warranty ticket. This is a normal check-in for the same device.`;
+    initial = {
+      customer: {
+        id: t.customer.id,
+        displayName: t.customer.displayName,
+        primaryPhone: t.customer.phones.find((p) => p.isPrimary)?.e164 ?? null,
+        email: t.customer.email,
+        archived: t.customer.archived,
+      },
+      customerDone: true,
+      deviceChoice: t.device.id,
+      device: devicePick(t.device),
+      deviceDone: true,
+    };
+  } else if (warranty.data) {
     const t = warranty.data;
     warrantyLabel = t.numberLabel;
     initial = {
@@ -312,6 +331,7 @@ export function CheckInPage({ prefill }: { prefill: CheckInPrefill }) {
       key={JSON.stringify(prefill)}
       initial={initial}
       warrantyLabel={warrantyLabel}
+      warrantyWarning={warrantyWarning}
       prefillError={warranty.error ?? customer.error ?? null}
     />
   );
@@ -322,10 +342,12 @@ export function CheckInPage({ prefill }: { prefill: CheckInPrefill }) {
 function CheckInForm({
   initial,
   warrantyLabel,
+  warrantyWarning,
   prefillError,
 }: {
   initial: Partial<CheckInState> | null;
   warrantyLabel: string | null;
+  warrantyWarning: string | null;
   prefillError: unknown;
 }) {
   const { me, shop } = useSession();
@@ -334,7 +356,10 @@ function CheckInForm({
   const showToast = useToast();
   const queryClient = useQueryClient();
   const canManageCustomers = can('customers.manage');
-  const isWarranty = !!warrantyLabel;
+  // A warranty check-in is locked to the original's customer and device (M2). If the API still
+  // refuses the link, staff can drop it and create a normal ticket.
+  const [warrantyDropped, setWarrantyDropped] = useState(false);
+  const isWarranty = !!warrantyLabel && !warrantyDropped;
 
   const ctxQuery = useCheckInContext();
   const ctx: CheckInContext | undefined = ctxQuery.data;
@@ -857,7 +882,7 @@ function CheckInForm({
           <Heading level={1} id="checkin-title">
             New ticket
           </Heading>
-          {warrantyLabel ? <Badge label={`Warranty for ${warrantyLabel}`} variant="info" /> : null}
+          {isWarranty ? <Badge label={`Warranty for ${warrantyLabel}`} variant="info" /> : null}
         </HStack>
         <ShortcutHints
           label="Check-in shortcuts"
@@ -882,6 +907,7 @@ function CheckInForm({
           endContent={<Button label="Discard" size="sm" onClick={discardDraft} />}
         />
       ) : null}
+      {warrantyWarning ? <Banner status="warning" title={warrantyWarning} /> : null}
       {prefillError ? (
         <Banner
           status="error"
@@ -1156,6 +1182,11 @@ function CheckInForm({
         }
         sectionRef={deviceRef}
       >
+        {isWarranty && state.deviceDone ? (
+          <Text type="supporting" color="secondary">
+            {`A warranty ticket is for the same device as ${warrantyLabel}.`}
+          </Text>
+        ) : null}
         {!state.customerDone && !nc ? (
           <Text color="secondary">Choose the customer first. Their devices show here.</Text>
         ) : null}
@@ -1695,15 +1726,31 @@ function CheckInForm({
               title={
                 errorCode(create.error) === 'ACTIVE_SHOP_CHANGED'
                   ? `You switched shop in another tab. This check-in is kept for ${shop.name}.`
-                  : "Couldn't create the ticket"
+                  : errorCode(create.error) === 'WARRANTY_NOT_ALLOWED'
+                    ? "Couldn't create the warranty ticket"
+                    : "Couldn't create the ticket"
               }
               description={
                 errorCode(create.error) === 'ACTIVE_SHOP_CHANGED'
                   ? undefined
-                  : errorMessage(create.error)
+                  : errorCode(create.error) === 'WARRANTY_NOT_ALLOWED' &&
+                      isApiRequestError(create.error)
+                    ? // The API says why (not collected, another device); show its words.
+                      create.error.body.message || errorMessage(create.error)
+                    : errorMessage(create.error)
               }
               endContent={
-                errorCode(create.error) === 'CUSTOMER_ARCHIVED' && state.customer ? (
+                errorCode(create.error) === 'WARRANTY_NOT_ALLOWED' ? (
+                  <Button
+                    label="Create without the warranty link"
+                    size="sm"
+                    onClick={() => {
+                      set({ warrantyOfTicketId: null });
+                      setWarrantyDropped(true);
+                      create.reset();
+                    }}
+                  />
+                ) : errorCode(create.error) === 'CUSTOMER_ARCHIVED' && state.customer ? (
                   <Button
                     label="Restore and use"
                     size="sm"

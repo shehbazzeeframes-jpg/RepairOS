@@ -514,9 +514,6 @@ export interface FakeOptions {
   world?: FakeApi;
 }
 
-const json = (route: Route, status: number, body: unknown) =>
-  route.fulfill({ status, json: body, headers: { [SHOP_ID_HEADER]: SHOP.id } });
-
 export function newWorld(me: MeResponse, tickets = defaultTickets()): FakeApi {
   return {
     me,
@@ -534,6 +531,9 @@ export function newWorld(me: MeResponse, tickets = defaultTickets()): FakeApi {
 /** Installs the fake on a page (on top of mockApi's /api/me, timeclock and auth defaults). */
 export async function mockSprint2(page: Page, options: FakeOptions): Promise<FakeApi> {
   const world = options.world ?? newWorld(options.me, options.tickets);
+  // Shop-scoped responses echo the session's active shop (A13).
+  const json = (route: Route, status: number, body: unknown) =>
+    route.fulfill({ status, json: body, headers: { [SHOP_ID_HEADER]: world.activeShopId } });
   const counts = () => {
     const now = new Date();
     const inView = (v: TicketView) =>

@@ -1,4 +1,4 @@
-import { parsePhoneNumberFromString } from 'libphonenumber-js';
+import { getCountryCallingCode, parsePhoneNumberFromString } from 'libphonenumber-js';
 import { z } from 'zod';
 import type { CountryCode } from './markets';
 
@@ -19,11 +19,15 @@ export function normalizePhone(raw: string | null | undefined, country: CountryC
   return parsed && parsed.isValid() ? parsed.number : null;
 }
 
-/** Display an E.164 number in national format for the shop's country (international format otherwise). */
+/**
+ * Display an E.164 number in national format when it shares the shop country's calling code (international format
+ * otherwise). Compared by calling code, not region: libphonenumber classifies some UK ranges (+44 7911…) as Crown
+ * Dependencies (GG/JE/IM), which are still dialled nationally from the UK (R7).
+ */
 export function formatPhone(e164: string, country: CountryCode): string {
   const parsed = parsePhoneNumberFromString(e164);
   if (!parsed) return e164;
-  return parsed.country === country ? parsed.formatNational() : parsed.formatInternational();
+  return parsed.countryCallingCode === getCountryCallingCode(country) ? parsed.formatNational() : parsed.formatInternational();
 }
 
 // ---------- Postcode ----------

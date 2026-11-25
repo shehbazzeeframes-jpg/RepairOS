@@ -158,3 +158,61 @@ export function catalogueModels(type: DeviceTypeValue, brand: string | null | un
     .slice(0, limit)
     .map((m) => m.model);
 }
+
+export interface ModelSuggestion extends CatalogueModel {
+  source: 'shop' | 'catalogue';
+  /** Devices in this shop with this type + brand + model (0 for catalogue-only entries). */
+  useCount: number;
+}
+
+/**
+ * One-box model search (R1/R2): every word of `q` must appear in "brand model" (case-insensitive), so "iph 13" finds
+ * Apple iPhone 13 and "galaxy a5" finds Samsung Galaxy A54/A55. `type` / `brand` narrow it when given.
+ * `shopHistory` (models this shop used before, with use counts) is merged in, de-duplicated case-insensitively by
+ * type + brand + model (a catalogue entry the shop has used becomes `source: 'shop'`).
+ * Ranking with `q`: an exact match of the query (model or "brand model") first, then the shortest model
+ * ("iPhone 13" before "iPhone 13 mini"), then shop use count, then catalogue order. Without `q`: shop use count,
+ * then catalogue order. Pure; GET /api/devices/model-suggestions uses it.
+ */
+export function suggestModels(opts: {
+  type?: DeviceTypeValue | null;
+  brand?: string | null;
+  q?: string | null;
+  limit?: number;
+  shopHistory?: readonly { type: DeviceTypeValue; brand: string; model: string; useCount: number }[];
+}): ModelSuggestion[] {
+  const q = (opts.q ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const words = q.split(' ').filter(Boolean);
+  const brand = opts.brand?.trim().toLowerCase() || null;
+  const key = (m: CatalogueModel) => `${m.type}|${m.brand.toLowerCase()}|${m.model.toLowerCase()}`;
+  const catalogueIndex = new Map<string, number>();
+  const merged = new Map<string, ModelSuggestion>();
+  DEVICE_MODEL_CATALOGUE.forEach((m, i) => {
+    catalogueIndex.set(key(m), i);
+    merged.set(key(m), { ...m, source: 'catalogue', useCount: 0 });
+  });
+  for (const h of opts.shopHistory ?? []) {
+    const k = key(h);
+    const prev = merged.get(k);
+    merged.set(
+      k,
+      prev
+        ? { ...prev, source: 'shop', useCount: prev.useCount + h.useCount }
+        : { type: h.type, brand: h.brand, model: h.model, source: 'shop', useCount: h.useCount },
+    );
+  }
+  const matches = [...merged.values()].filter((m) => {
+    if (opts.type && m.type !== opts.type) return false;
+    if (brand && m.brand.toLowerCase() !== brand) return false;
+    const hay = `${m.brand} ${m.model}`.toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+  const exact = (m: ModelSuggestion) => (m.model.toLowerCase() === q || `${m.brand} ${m.model}`.toLowerCase() === q ? 0 : 1);
+  const idx = (m: ModelSuggestion) => catalogueIndex.get(key(m)) ?? Number.MAX_SAFE_INTEGER;
+  matches.sort((a, b) =>
+    q
+      ? exact(a) - exact(b) || a.model.length - b.model.length || b.useCount - a.useCount || idx(a) - idx(b)
+      : b.useCount - a.useCount || idx(a) - idx(b) || a.model.localeCompare(b.model),
+  );
+  return matches.slice(0, opts.limit ?? 20);
+}

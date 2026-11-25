@@ -252,14 +252,10 @@ test.describe('Deactivation (S5)', () => {
       page.getByRole('navigation', { name: 'Shop' }).getByRole('link', { name: own.name }),
     ).toBeVisible();
     await page.waitForTimeout(1500);
-    test
-      .info()
-      .annotations.push({
-        type: '/api/me responses',
-        description: meBodies
-          .map((b) => /"accessRemoved":(null|\{[^}]*\})/.exec(b)?.[1])
-          .join(' | '),
-      });
+    test.info().annotations.push({
+      type: '/api/me responses',
+      description: meBodies.map((b) => /"accessRemoved":(null|\{[^}]*\})/.exec(b)?.[1]).join(' | '),
+    });
     await page.screenshot({ path: shot('deact-02b-no-banner') });
     await expect(page.getByText(`You no longer have access to ${owner.shop.name}.`)).toBeVisible();
   });

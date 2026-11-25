@@ -175,12 +175,10 @@ test.describe('Last owner and self protection (S4.3–4, S5.3–4)', () => {
       b.post(`/api/staff/${aRow.id}/deactivate`, { headers: jsonHeaders, data: {} }),
     ]);
     const statuses = [r1.status(), r2.status()];
-    test
-      .info()
-      .annotations.push({
-        type: 'race',
-        description: JSON.stringify([statuses, await r1.text(), await r2.text()]),
-      });
+    test.info().annotations.push({
+      type: 'race',
+      description: JSON.stringify([statuses, await r1.text(), await r2.text()]),
+    });
     expect(statuses.filter((s) => s < 300)).toHaveLength(1);
     const after = await sql(
       `SELECT count(*) FROM memberships WHERE "shopId" = '${a.shop.id}' AND role = 'OWNER' AND status = 'ACTIVE'`,

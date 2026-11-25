@@ -68,12 +68,10 @@ test.describe('Shop profile (SP1) with market validation', () => {
     const ev = (await auditEvents(owner.ctx)).find((e) => e.action === 'shop.updated')!;
     expect(ev).toBeTruthy();
     const detail = await (await owner.ctx.get(`/api/audit-events/${ev.id}`)).json();
-    test
-      .info()
-      .annotations.push({
-        type: 'shop.updated diff',
-        description: JSON.stringify({ before: detail.before, after: detail.after }),
-      });
+    test.info().annotations.push({
+      type: 'shop.updated diff',
+      description: JSON.stringify({ before: detail.before, after: detail.after }),
+    });
     expect(Object.keys(detail.after ?? {}).sort()).toEqual([
       'city',
       'phone',

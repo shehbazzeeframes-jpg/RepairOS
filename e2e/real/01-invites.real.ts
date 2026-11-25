@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import {
+  BASE,
   apiAs,
   auditEvents,
   inviteApi,
@@ -54,7 +55,7 @@ test.describe('Invites (story §2 S2/S3, §3 A1/A2, §8 E1, D7, D10)', () => {
     expect(mail.text).toMatch(/This invite expires on .+\./);
     expect(mail.text).toContain("If you weren't expecting this, you can ignore this email.");
     const link = inviteLinkFrom(mail);
-    expect(link.startsWith('http://localhost:3200/invite/')).toBe(true);
+    expect(link.startsWith(`${BASE}/invite/`)).toBe(true);
     // E1.4: the worker marks the invite SENT.
     await expect
       .poll(
@@ -121,12 +122,10 @@ test.describe('Invites (story §2 S2/S3, §3 A1/A2, §8 E1, D7, D10)', () => {
       replyTo: string | null;
       html: string;
     };
-    test
-      .info()
-      .annotations.push({
-        type: 'envelope',
-        description: JSON.stringify({ from: stored.from, replyTo: stored.replyTo }),
-      });
+    test.info().annotations.push({
+      type: 'envelope',
+      description: JSON.stringify({ from: stored.from, replyTo: stored.replyTo }),
+    });
     expect(stored.replyTo).toBeNull(); // L4: no Reply-To with the inviter's unverified address
     expect(stored.from).toMatch(/RepairOS/);
     expect(stored.html).toContain('Accept invite');
@@ -224,7 +223,7 @@ test.describe('Invites (story §2 S2/S3, §3 A1/A2, §8 E1, D7, D10)', () => {
     const dialog = page.getByRole('dialog', { name: 'Invite link copied' });
     await expect(dialog.getByText('Paste it into WhatsApp', { exact: false })).toBeVisible();
     const copied = await dialog.getByLabel('Invite link').inputValue();
-    expect(copied).toMatch(/^http:\/\/localhost:3200\/invite\/[A-Za-z0-9_-]+$/);
+    expect(copied).toMatch(new RegExp(`^${BASE}/invite/[A-Za-z0-9_-]+$`));
     expect(copied).not.toBe(emailed);
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(copied);
     await page.screenshot({ path: shot('inv-04-copy-link') });

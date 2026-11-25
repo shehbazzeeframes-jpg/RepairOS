@@ -251,9 +251,11 @@ test.describe('Tenant isolation (PK owner vs US shop)', () => {
     ).text();
     expect(sheet).not.toContain('seed_te_');
     expect(sheet).not.toContain(SEED.tech);
-    const pkShop = await (
-      await pk.get('/api/shop', { headers: { 'x-shop-id': SEED.usShopId } })
-    ).json();
+    // Since Sprint 2 (A13) a mismatching X-Shop-Id is refused outright with 409 ACTIVE_SHOP_CHANGED.
+    const wrongHeader = await pk.get('/api/shop', { headers: { 'x-shop-id': SEED.usShopId } });
+    expect(wrongHeader.status()).toBe(409);
+    expect(JSON.stringify(await wrongHeader.json())).not.toContain(SEED.usShop);
+    const pkShop = await (await pk.get('/api/shop')).json();
     expect(pkShop.shop.name).toBe(SEED.pkShop);
 
     // US data unchanged.

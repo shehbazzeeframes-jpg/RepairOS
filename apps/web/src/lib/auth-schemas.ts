@@ -1,9 +1,7 @@
+import { PASSWORD_MIN_LENGTH, PasswordSchema } from '@repairos/contracts';
 import { z } from 'zod';
 
-/**
- * Sign-in / sign-up form schemas. Better Auth owns these endpoints, so there is no
- * shared contract yet; the limits mirror Better Auth's defaults (password 8-128).
- */
+/** Sign-in / sign-up form schemas. Password policy comes from contracts (same as Better Auth's config). */
 const email = z
   .string()
   .trim()
@@ -16,15 +14,17 @@ export const SignInForm = z.object({
 });
 export type SignInForm = z.infer<typeof SignInForm>;
 
-export const PASSWORD_MIN = 8;
-export const PASSWORD_MAX = 128;
+export const PASSWORD_MIN = PASSWORD_MIN_LENGTH;
 
 export const SignUpForm = z.object({
   name: z.string().trim().min(1, 'Enter your name').max(80, 'Use 80 characters or fewer'),
   email,
-  password: z
-    .string()
-    .min(PASSWORD_MIN, `Use at least ${PASSWORD_MIN} characters`)
-    .max(PASSWORD_MAX, `Use ${PASSWORD_MAX} characters or fewer`),
+  password: PasswordSchema,
 });
 export type SignUpForm = z.infer<typeof SignUpForm>;
+
+/** New password + confirmation for /reset-password. */
+export const NewPasswordForm = z
+  .object({ password: PasswordSchema, confirm: z.string().min(1, 'Type the password again') })
+  .refine((v) => v.password === v.confirm, { path: ['confirm'], message: "Passwords don't match" });
+export type NewPasswordForm = z.infer<typeof NewPasswordForm>;

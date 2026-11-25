@@ -11,9 +11,16 @@ import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { VStack } from '@astryxdesign/core/VStack';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { type CountryCode, CreateShopInput, MARKET_DEFAULTS, Shop } from '@repairos/contracts';
+import {
+  type CountryCode,
+  CreateShopInput,
+  MARKET_DEFAULTS,
+  POSTCODE_LABELS,
+  Shop,
+} from '@repairos/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import type { z } from 'zod';
 import { AuthLayout } from '@/components/AuthLayout';
@@ -23,7 +30,9 @@ import { apiFetch, isApiRequestError } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { describeTaxDefaults, formatMoney } from '@/lib/format';
 import { COUNTRY_OPTIONS } from '@/lib/markets';
+import { errorMessage } from '@/lib/errors';
 import { meQueryKey } from '@/lib/me';
+import { qk } from '@/lib/queries';
 import { useSessionGate } from '@/lib/session-gate';
 
 type FormInput = z.input<typeof CreateShopInput>;
@@ -89,8 +98,10 @@ function MarketSummary({ country }: { country: CountryCode | undefined }) {
   );
 }
 
-export default function OnboardingPage() {
-  const gate = useSessionGate('onboarding');
+function Onboarding() {
+  const searchParams = useSearchParams();
+  const newShop = searchParams.get('new') === '1';
+  const gate = useSessionGate('onboarding', { newShop });
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -112,6 +123,7 @@ export default function OnboardingPage() {
     mutationFn: (input: CreateShopInput) =>
       apiFetch('/api/shops', Shop, { method: 'POST', json: toPayload(input) }),
     onSuccess: async () => {
+      queryClient.removeQueries({ queryKey: qk.shopSettings.slice(0, 1) });
       await queryClient.invalidateQueries({ queryKey: meQueryKey });
       router.replace('/');
     },
@@ -144,10 +156,16 @@ export default function OnboardingPage() {
   return (
     <AuthLayout
       width={560}
-      title="Set up your shop"
+      title={newShop && gate.me?.activeShop ? 'Set up another shop' : 'Set up your shop'}
       subtitle="This is what customers see on receipts and messages."
       footer={
         <Text color="secondary">
+          {newShop && gate.me?.activeShop ? (
+            <>
+              <Link href="/">Back to {gate.me.activeShop.name}</Link>
+              {' · '}
+            </>
+          ) : null}
           Signed in as {gate.me?.user.email}.{' '}
           <Link
             href="/sign-in"
@@ -167,7 +185,7 @@ export default function OnboardingPage() {
             <Banner
               status="error"
               title="Could not create your shop"
-              description={createShop.error.message}
+              description={errorMessage(createShop.error)}
             />
           ) : null}
           <Controller
@@ -266,7 +284,7 @@ export default function OnboardingPage() {
               name="postcode"
               render={({ field, fieldState }) => (
                 <TextInput
-                  label={country === 'US' ? 'ZIP code' : 'Postcode'}
+                  label={country ? POSTCODE_LABELS[country] : 'Postcode'}
                   autoComplete="postal-code"
                   isOptional
                   value={field.value ?? ''}
@@ -290,5 +308,13 @@ export default function OnboardingPage() {
         </FormLayout>
       </form>
     </AuthLayout>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense fallback={<FullPageLoader />}>
+      <Onboarding />
+    </Suspense>
   );
 }

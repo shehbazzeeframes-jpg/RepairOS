@@ -5,37 +5,47 @@ import { Button } from '@astryxdesign/core/Button';
 import { FormLayout } from '@astryxdesign/core/FormLayout';
 import { Link } from '@astryxdesign/core/Link';
 import { Text } from '@astryxdesign/core/Text';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { Suspense, useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { AuthLayout } from '@/components/AuthLayout';
+import { FormTextInput } from '@/components/form';
+import { FullPageLoader } from '@/components/FullPageLoader';
 import { authClient, authErrorMessage } from '@/lib/auth-client';
 import { PASSWORD_MIN, SignUpForm } from '@/lib/auth-schemas';
+import { useInviteContext } from '@/lib/invite-context';
 import { meQueryKey } from '@/lib/me';
 import { useSessionGate } from '@/lib/session-gate';
 
-export default function SignUpPage() {
-  useSessionGate('guest');
+function SignUp() {
+  const invite = useInviteContext();
+  useSessionGate('guest', { invite: invite.token });
   const router = useRouter();
   const queryClient = useQueryClient();
   const [apiError, setApiError] = useState<string | null>(null);
   const {
     control,
     handleSubmit,
+    setValue,
     formState: { isSubmitting },
   } = useForm<SignUpForm>({
     resolver: zodResolver(SignUpForm),
     defaultValues: { name: '', email: '', password: '' },
   });
+  const lockedEmail = invite.email;
+
+  // The account must use the invited email, so it is prefilled and read-only.
+  useEffect(() => {
+    if (lockedEmail) setValue('email', lockedEmail);
+  }, [lockedEmail, setValue]);
 
   const onSubmit = handleSubmit(async (values) => {
     setApiError(null);
     const { error } = await authClient.signUp.email({
       name: values.name,
-      email: values.email,
+      email: lockedEmail ?? values.email,
       password: values.password,
     });
     if (error) {
@@ -43,16 +53,23 @@ export default function SignUpPage() {
       return;
     }
     await queryClient.invalidateQueries({ queryKey: meQueryKey });
-    router.replace('/onboarding');
+    router.replace(invite.returnTo ?? '/onboarding');
   });
+
+  if (invite.isLoading) return <FullPageLoader />;
+  const signInHref = invite.token ? `/sign-in?invite=${invite.token}` : '/sign-in';
 
   return (
     <AuthLayout
       title="Create your account"
-      subtitle="Start your 14-day free trial. No card needed."
+      subtitle={
+        invite.shopName
+          ? `Joining ${invite.shopName}. Create your account to accept the invite.`
+          : 'Start your 14-day free trial. No card needed.'
+      }
       footer={
         <Text color="secondary">
-          Already have an account? <Link href="/sign-in">Sign in</Link>
+          Already have an account? <Link href={signInHref}>Sign in</Link>
         </Text>
       }
     >
@@ -61,71 +78,31 @@ export default function SignUpPage() {
           {apiError ? (
             <Banner status="error" title="Could not create your account" description={apiError} />
           ) : null}
-          <Controller
+          <FormTextInput
             control={control}
             name="name"
-            render={({ field, fieldState }) => (
-              <TextInput
-                label="Your name"
-                autoComplete="name"
-                placeholder="Alex Morgan"
-                value={field.value}
-                onChange={(v) => field.onChange(v)}
-                onBlur={field.onBlur}
-                ref={field.ref}
-                htmlName={field.name}
-                hasAutoFocus
-                status={
-                  fieldState.error
-                    ? { type: 'error', message: fieldState.error.message }
-                    : undefined
-                }
-              />
-            )}
+            label="Your name"
+            autoComplete="name"
+            placeholder="Alex Morgan"
+            hasAutoFocus
           />
-          <Controller
+          <FormTextInput
             control={control}
             name="email"
-            render={({ field, fieldState }) => (
-              <TextInput
-                label="Work email"
-                type="email"
-                autoComplete="email"
-                placeholder="you@yourshop.com"
-                value={field.value}
-                onChange={(v) => field.onChange(v)}
-                onBlur={field.onBlur}
-                ref={field.ref}
-                htmlName={field.name}
-                status={
-                  fieldState.error
-                    ? { type: 'error', message: fieldState.error.message }
-                    : undefined
-                }
-              />
-            )}
+            label="Work email"
+            type="email"
+            autoComplete="email"
+            placeholder="you@yourshop.com"
+            isReadOnly={lockedEmail !== null}
+            description={lockedEmail ? 'The invite is for this email.' : undefined}
           />
-          <Controller
+          <FormTextInput
             control={control}
             name="password"
-            render={({ field, fieldState }) => (
-              <TextInput
-                label="Password"
-                type="password"
-                autoComplete="new-password"
-                description={`At least ${PASSWORD_MIN} characters.`}
-                value={field.value}
-                onChange={(v) => field.onChange(v)}
-                onBlur={field.onBlur}
-                ref={field.ref}
-                htmlName={field.name}
-                status={
-                  fieldState.error
-                    ? { type: 'error', message: fieldState.error.message }
-                    : undefined
-                }
-              />
-            )}
+            label="Password"
+            type="password"
+            autoComplete="new-password"
+            description={`At least ${PASSWORD_MIN} characters.`}
           />
           <Button
             type="submit"
@@ -138,5 +115,13 @@ export default function SignUpPage() {
         </FormLayout>
       </form>
     </AuthLayout>
+  );
+}
+
+export default function SignUpPage() {
+  return (
+    <Suspense fallback={<FullPageLoader />}>
+      <SignUp />
+    </Suspense>
   );
 }

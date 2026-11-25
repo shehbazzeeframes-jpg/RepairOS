@@ -1,0 +1,194 @@
+// RepairOS database schema. See packages/db/README.md for tenancy + RLS rules.
+// Tenant tables (have shopId + RLS policy): Location, Membership, TaxRate, AuditLog. Shop is the tenant root.
+// Auth tables (User/Session/Account/Verification) follow Better Auth's Prisma adapter shape.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Admin/owner connection used by migrations and seed. The API connects as `repairos_app` (APP_DATABASE_URL).
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  FRONT_DESK
+  TECHNICIAN
+}
+
+enum CountryCode {
+  US
+  GB
+  PK
+}
+
+enum CurrencyCode {
+  USD
+  GBP
+  PKR
+}
+
+enum TaxAppliesTo {
+  all
+  goods
+  services
+}
+
+// ---------- Better Auth ----------
+
+model User {
+  id            String       @id
+  name          String
+  email         String       @unique
+  emailVerified Boolean      @default(false)
+  image         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  memberships   Membership[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id           String   @id
+  expiresAt    DateTime
+  token        String   @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  ipAddress    String?
+  userAgent    String?
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The shop the user is working in. Membership is re-validated on every request.
+  activeShopId String?
+  activeShop   Shop?    @relation(fields: [activeShopId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+// ---------- Tenancy ----------
+
+model Shop {
+  id               String       @id @default(cuid())
+  name             String
+  country          CountryCode
+  currency         CurrencyCode
+  locale           String
+  timezone         String
+  pricesIncludeTax Boolean
+  /// E.164, normalised by the API with the shop's country as default region.
+  phone            String?
+  addressLine1     String?
+  addressLine2     String?
+  city             String?
+  region           String?
+  postcode         String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  locations        Location[]
+  memberships      Membership[]
+  taxRates         TaxRate[]
+  auditLogs        AuditLog[]
+  activeSessions   Session[]
+
+  @@map("shops")
+}
+
+model Location {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+  @@map("locations")
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  role      Role
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, shopId])
+  @@index([shopId])
+  @@map("memberships")
+}
+
+model TaxRate {
+  id        String       @id @default(cuid())
+  shopId    String
+  shop      Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  /// Basis points: 2000 = 20.00%
+  rateBps   Int
+  appliesTo TaxAppliesTo @default(all)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([shopId])
+  @@map("tax_rates")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  actorUserId String?
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  action      String
+  entityType  String
+  entityId    String
+  before      Json?
+  after       Json?
+  createdAt   DateTime @default(now())
+
+  @@index([shopId, createdAt])
+  @@map("audit_logs")
+}

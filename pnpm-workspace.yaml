@@ -4,3 +4,9 @@ packages:
   - "e2e"
 minimumReleaseAgeExclude:
   - "@astryxdesign/*"
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/engines"
+  - "prisma"
+  - "esbuild"
+  - "@nestjs/core"

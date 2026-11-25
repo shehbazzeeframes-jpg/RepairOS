@@ -1,0 +1,41 @@
+{
+  "name": "@repairos/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" }
+  },
+  "scripts": {
+    "generate": "prisma generate",
+    "postinstall": "prisma generate",
+    "build": "prisma generate && tsup src/index.ts --format esm,cjs --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "migrate": "dotenv -e ../../.env -- prisma migrate deploy && prisma generate && dotenv -e ../../.env -- tsx scripts/sync-app-role.ts",
+    "migrate:dev": "dotenv -e ../../.env -- prisma migrate dev && dotenv -e ../../.env -- tsx scripts/sync-app-role.ts",
+    "migrate:status": "dotenv -e ../../.env -- prisma migrate status",
+    "seed": "dotenv -e ../../.env -- tsx src/seed.ts",
+    "studio": "dotenv -e ../../.env -- prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.10.0",
+    "better-auth": "^1.7.28",
+    "dotenv-cli": "^11.0.0",
+    "eslint": "^9.39.5",
+    "prisma": "6.19.3",
+    "tsup": "^8.5.1",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^2.1.9"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "experimentalDecorators": true,
+    // esbuild (tsx, tsup, vitest) cannot emit decorator metadata, so DI uses explicit @Inject(...) everywhere.
+    "emitDecoratorMetadata": false,
+    "noEmit": true
+  },
+  "include": ["src", "test", "vitest.config.ts", "tsup.config.ts"]
+}

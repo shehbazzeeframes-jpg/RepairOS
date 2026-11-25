@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 
 export * from '@prisma/client';
 export * from './erase';
+export * from './maintenance';
 export * from './field-crypto';
 export * from './models';
 export * from './scope-args';

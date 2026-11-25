@@ -176,8 +176,17 @@ Migration `20261201090000_sprint2_customers_tickets`. Read with `docs/stories/sp
 Migration `20261202090000_ticket_idempotency_keys` adds `ticket_idempotency_keys` (tenant table, RLS): one row per
 (shop, user, `Idempotency-Key`) for POST /api/tickets. The API inserts it first in the check-in transaction with
 `ON CONFLICT DO NOTHING` (a concurrent duplicate waits, then finds the committed row and returns that ticket); a key
-older than `IDEMPOTENCY_WINDOW_MINUTES` is deleted and reused. Rows are small and never read after 10 minutes; a
-clean-up job can delete old rows later.
+older than `IDEMPOTENCY_WINDOW_MINUTES` is deleted and reused. Rows are small and never read after 10 minutes; the
+worker deletes them daily (below).
+
+Migration `20261203100000_daily_maintenance` adds the two functions the worker's daily `maintenance` queue calls as
+the app role **without a shop context** (so they are SECURITY DEFINER and act on every shop; fixed, idempotent
+clean-ups that return a count only):
+
+| Function / helper | What |
+|---|---|
+| `app_sweep_unused_passcodes(minAge)` / `sweepUnusedPasscodes(db)` | Code review H1 backstop: deletes the passcode of every device with no non-closed ticket in shops with `deletePasscodeOnClose` on (passcodes set < 1 h ago are left alone). Locks each device (`SKIP LOCKED`) and re-checks; writes `passcode_deleted` on the device's last closed ticket |
+| `app_purge_ticket_idempotency_keys(olderThan)` / `purgeExpiredIdempotencyKeys(db, minutes)` | Deletes idempotency keys older than the window (never younger than 10 minutes) |
 
 ### Rules built into the schema
 

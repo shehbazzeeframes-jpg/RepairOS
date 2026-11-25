@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeTaxDefaults, displayFractionDigits, formatMoney, formatRateBps } from './format';
+import { describeTaxDefaults, displayFractionDigits, formatMoney } from './format';
 
 describe('formatMoney', () => {
   it('formats USD minor units with two decimals in en-US', () => {
@@ -43,12 +43,6 @@ describe('displayFractionDigits', () => {
 });
 
 describe('tax helpers', () => {
-  it('formats basis points as a percentage', () => {
-    expect(formatRateBps(2000)).toBe('20%');
-    expect(formatRateBps(888)).toBe('8.88%');
-    expect(formatRateBps(0)).toBe('0%');
-  });
-
   it('describes each market default', () => {
     expect(describeTaxDefaults('GB')).toBe('Prices include VAT 20%');
     expect(describeTaxDefaults('US')).toBe(

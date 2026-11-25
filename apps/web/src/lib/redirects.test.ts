@@ -1,12 +1,12 @@
-import { MeResponse } from '@repairos/contracts';
+import { MeResponse, permissionsFor } from '@repairos/contracts';
 import { describe, expect, it } from 'vitest';
 import { redirectFor } from './redirects';
 
 const user = { id: 'u1', name: 'Alex Morgan', email: 'alex@example.com' };
-const noShop = MeResponse.parse({ user, memberships: [], activeShop: null, role: null });
+const noShop = MeResponse.parse({ user, memberships: [], activeShop: null, role: null, permissions: [], accessRemoved: null });
 const withShop = MeResponse.parse({
   user,
-  memberships: [{ shopId: 's1', shopName: 'Fix It', role: 'OWNER' }],
+  memberships: [{ shopId: 's1', shopName: 'Fix It', role: 'OWNER', status: 'ACTIVE' }],
   activeShop: {
     id: 's1',
     name: 'Fix It',
@@ -19,6 +19,8 @@ const withShop = MeResponse.parse({
     createdAt: '2026-11-20T09:00:00.000Z',
   },
   role: 'OWNER',
+  permissions: permissionsFor('OWNER'),
+  accessRemoved: null,
 });
 
 describe('redirectFor', () => {

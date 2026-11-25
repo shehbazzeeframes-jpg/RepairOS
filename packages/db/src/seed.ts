@@ -89,7 +89,7 @@ async function seedShop(prisma: PrismaClient, s: SeedShop, passwordHash: string)
       create: { userId: owner.id, shopId: s.id, role },
     });
     await tx.taxRate.deleteMany({ where: { shopId: s.id } });
-    await tx.taxRate.createMany({ data: d.taxRates.map((t) => ({ shopId: s.id, ...t })) });
+    await tx.taxRate.createMany({ data: d.taxRates.map((t) => ({ shopId: s.id, name: t.name, rateMilliPct: t.rateMilliPct, appliesTo: t.appliesTo })) });
   });
   console.log(`[seed] ${s.name} (${s.country}) owner ${s.owner.email}`);
 }

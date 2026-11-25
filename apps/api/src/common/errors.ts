@@ -1,14 +1,8 @@
 import { HttpException } from '@nestjs/common';
-import type { ApiError } from '@repairos/contracts';
+import type { ApiError, ApiErrorCode } from '@repairos/contracts';
 
-export type ApiErrorCode =
-  | 'VALIDATION_FAILED'
-  | 'UNAUTHENTICATED'
-  | 'FORBIDDEN'
-  | 'NOT_FOUND'
-  | 'CONFLICT'
-  | 'RATE_LIMITED'
-  | 'INTERNAL';
+/** Every code, with its HTTP status, is listed in contracts (`ApiErrorCode`, `API_ERROR_STATUS`). */
+export type { ApiErrorCode };
 
 export type ApiIssue = NonNullable<ApiError['issues']>[number];
 

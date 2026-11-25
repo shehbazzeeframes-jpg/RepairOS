@@ -1,4 +1,4 @@
-import { MARKET_DEFAULTS, type CountryCode, type CurrencyCode } from '@repairos/contracts';
+import { MARKET_DEFAULTS, formatRate, type CountryCode, type CurrencyCode } from '@repairos/contracts';
 
 /**
  * ISO 4217 minor-unit exponent: how many minor units make one major unit in storage.
@@ -56,17 +56,10 @@ export function formatMoney(amountMinor: number, ctx: MoneyFormatContext): strin
   return moneyFormatter(ctx.locale, ctx.currency).format(major);
 }
 
-/** Basis points to a percentage label: 2000 → "20%", 888 → "8.88%". */
-export function formatRateBps(rateBps: number, locale = 'en-US'): string {
-  return new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 3 }).format(
-    rateBps / 10_000,
-  );
-}
-
 /** Plain-language summary of the tax defaults a new shop in this country gets. */
 export function describeTaxDefaults(country: CountryCode): string {
   const market = MARKET_DEFAULTS[country];
-  const rates = market.taxRates.filter((r) => r.rateBps > 0);
+  const rates = market.taxRates.filter((r) => r.rateMilliPct > 0);
   if (rates.length === 0) {
     const name = market.taxRates[0]?.name ?? 'Tax';
     return `Prices exclude ${name.toLowerCase()}. Add your local rate in Settings.`;
@@ -75,7 +68,7 @@ export function describeTaxDefaults(country: CountryCode): string {
     .map((r) => {
       const scoped = r.appliesTo !== 'all' && !r.name.toLowerCase().includes(r.appliesTo);
       const scope = scoped ? ` on ${r.appliesTo}` : '';
-      return `${r.name} ${formatRateBps(r.rateBps, market.locale)}${scope}`;
+      return `${r.name} ${formatRate(r.rateMilliPct, market.locale)}${scope}`;
     })
     .join(', ');
   return market.pricesIncludeTax ? `Prices include ${list}` : `Prices exclude tax: ${list}`;

@@ -162,15 +162,15 @@ model Membership {
 }
 
 model TaxRate {
-  id        String       @id @default(cuid())
-  shopId    String
-  shop      Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  name      String
-  /// Basis points: 2000 = 20.00%
-  rateBps   Int
-  appliesTo TaxAppliesTo @default(all)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id           String       @id @default(cuid())
+  shopId       String
+  shop         Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name         String
+  /// Thousandths of a percent: 8875 = 8.875%, 20000 = 20% (decision D2)
+  rateMilliPct Int
+  appliesTo    TaxAppliesTo @default(all)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@index([shopId])
   @@map("tax_rates")

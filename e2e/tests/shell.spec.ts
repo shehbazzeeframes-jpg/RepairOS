@@ -20,10 +20,10 @@ test('renders the shell for a user with a shop', async ({ page }) => {
     'page',
   );
 
-  for (const label of ['Open tickets', 'Ready for pickup', "Today's sales"]) {
+  for (const label of ['Open tickets', 'Ready for pickup', 'Overdue', 'Due today']) {
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
-  await expect(page.getByText('£0.00')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'My queue' })).toBeVisible();
 });
 
 test('nav placeholders say which sprint delivers them', async ({ page }) => {
@@ -31,8 +31,6 @@ test('nav placeholders say which sprint delivers them', async ({ page }) => {
   await page.goto('/');
   const sideNav = page.getByRole('navigation', { name: 'Main' });
   const expected: [string, number][] = [
-    ['Tickets', 2],
-    ['Customers', 2],
     ['Inventory', 4],
     ['POS', 5],
     ['Reports', 6],

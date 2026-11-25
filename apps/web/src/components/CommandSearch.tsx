@@ -16,7 +16,7 @@ import {
   maskIdentifier,
 } from '@repairos/contracts';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useCan } from './RequirePermission';
 import { apiFetch } from '@/lib/api';
 import { readRecent } from '@/lib/recent-items';
@@ -116,6 +116,8 @@ export function CommandSearch({
 
   const source = useMemo(() => {
     const hrefs = new Map<string, string>();
+    /** The top result of the latest search (an exact match is first). */
+    const top: { current: string | null } = { current: null };
     const ctl: { current: AbortController | null } = { current: null };
     const remember = (items: SearchItem[]) => {
       for (const i of items) hrefs.set(i.id, i.auxiliaryData.href);
@@ -123,6 +125,7 @@ export function CommandSearch({
     };
     return {
       hrefs,
+      top,
       bootstrap: () =>
         remember([
           ...readRecent(me.user.id, shop.id).map<SearchItem>((r) => ({
@@ -155,6 +158,7 @@ export function CommandSearch({
         ]),
       search: async (query: string): Promise<SearchItem[]> => {
         const q = query.trim();
+        top.current = null;
         if (q.length < 2) return [];
         ctl.current?.abort();
         const controller = new AbortController();
@@ -170,7 +174,9 @@ export function CommandSearch({
             },
           );
           setFailed(false);
-          return remember(searchItems(q, r, { canTickets, canCustomers }));
+          const items = remember(searchItems(q, r, { canTickets, canCustomers }));
+          top.current = items[0]?.id ?? null;
+          return items;
         } catch {
           if (!controller.signal.aborted) setFailed(true);
           return [];
@@ -178,6 +184,24 @@ export function CommandSearch({
       },
     };
   }, [me.user.id, shop.id, canTickets, canCustomers, canCreate, canManage]);
+
+  // ↵ with nothing highlighted opens the top result (a scanned ticket number or IMEI jumps there).
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      const input = document.activeElement;
+      if (!(input instanceof HTMLInputElement) || input.getAttribute('aria-activedescendant')) return;
+      const href = source.top.current ? source.hrefs.get(source.top.current) : undefined;
+      if (!href) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onOpenChange(false);
+      router.push(href);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [isOpen, source, onOpenChange, router]);
 
   return (
     <CommandPalette<SearchItem>

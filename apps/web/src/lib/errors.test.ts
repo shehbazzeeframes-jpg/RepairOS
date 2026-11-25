@@ -27,6 +27,11 @@ describe('errorMessage', () => {
     expect(errorMessage(err('SOMETHING_NEW', 'New thing'))).toBe('New thing');
   });
 
+  it('shows the API message for 409 CONFLICT (a ticket write still racing after retries)', () => {
+    const msg = 'This status was changed at the same time. Check the ticket and try again.';
+    expect(errorMessage(err('CONFLICT', msg))).toBe(msg);
+  });
+
   it('handles non-API errors', () => {
     expect(errorMessage(new Error('boom'))).toBe('boom');
     expect(errorMessage('x')).toBe('Something went wrong. Please try again.');

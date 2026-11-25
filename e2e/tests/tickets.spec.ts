@@ -142,6 +142,33 @@ test.describe('ticket detail', () => {
     await expect(page.getByRole('heading', { level: 1 }).locator('..')).toContainText('In repair');
   });
 
+  test('a write that still races after retries (409 CONFLICT) shows the API message', async ({
+    page,
+  }) => {
+    const message = 'This status was changed at the same time. Check the ticket and try again.';
+    await mockSprint2(page, {
+      me: ME_WITH_SHOP,
+      handlers: {
+        'POST /api/tickets/:id/status': (route) =>
+          route.fulfill({ status: 409, json: apiError(409, 'CONFLICT', message) }),
+        'PATCH /api/tickets/:id': (route) =>
+          route.fulfill({ status: 409, json: apiError(409, 'CONFLICT', message) }),
+      },
+    });
+    await page.goto('/tickets/tkt_1042');
+    await page.getByRole('button', { name: 'Change status' }).click();
+    await page.getByRole('menuitem', { name: /Diagnosing/ }).click();
+    await expect(toast(page, message)).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 }).locator('..')).toContainText('In repair');
+
+    await page.getByRole('button', { name: 'Edit details' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'Edit T-1042' });
+    await dialog.getByRole('radio', { name: 'Normal' }).click();
+    await dialog.getByRole('button', { name: 'Save changes' }).click();
+    await expect(dialog.getByText(message)).toBeVisible();
+    await expect(page.getByText('CONFLICT', { exact: true })).toHaveCount(0);
+  });
+
   test('passcode reveal: POST, shown with a countdown, hidden after 30 s', async ({ page }) => {
     await page.clock.install();
     const api = await mockSprint2(page, { me: ME_WITH_SHOP });

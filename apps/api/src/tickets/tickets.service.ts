@@ -604,14 +604,12 @@ export class TicketsService {
       const initialId = input.statusId ? null : (await tx.ticketStatus.findFirst({ where: { systemRole: 'INITIAL' }, select: { id: true } }))?.id;
       const targetOf = (row: Ticket) => input.statusId ?? row.statusIdBeforeClose ?? initialId;
       // Lock order: target status → customer → ticket. Erase holds the customer while it rewrites the customer's
-      // tickets, so taking the customer before the ticket is what keeps reopen and erase from deadlocking.
+      // tickets, so taking the customer before the ticket is what keeps reopen and erase from deadlocking. (Story
+      // §TK-R 4: reopening a ticket of an erased customer is allowed; it shows as "Erased customer".)
       const t = await this.lockTicketWrite(tx, id, (row) => ({ statuses: [targetOf(row)] }));
       const targetId = targetOf(t);
       const target = targetId ? await tx.ticketStatus.findFirst({ where: { id: targetId } }) : null;
       if (!target) throw notFound();
-      // An erase that committed first: an erased customer cannot get an open ticket back.
-      const owner = await tx.customer.findFirst({ where: { id: t.customerId }, select: { erasedAt: true } });
-      if (owner?.erasedAt) throw apiError('CUSTOMER_ERASED');
       const r = canTransition({ category: t.statusCategory as StatusCategory, id: t.statusId }, { ...target, category: target.category as StatusCategory }, {
         role: actor.role,
         via: 'reopen',

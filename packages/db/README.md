@@ -214,7 +214,7 @@ Per path (all through `tenantDb(...).tx`):
 | Check-in | key → INITIAL status → customer → warranty original + root (`FOR SHARE`) → device → number |
 | Ticket edit (incl. customer/device change) | both customers → ticket → old + new device |
 | Status change / collect / cancel | target + current status (`FOR SHARE`) → customer → ticket → device (passcode on close) |
-| Reopen | target status → customer → ticket; refused with `CUSTOMER_ERASED` if an erase committed first |
+| Reopen | target status → customer → ticket (a reopen racing an erase waits for it, then reopens: allowed for an erased customer) |
 | Assign | ticket |
 | Passcode reveal | ticket (`FOR SHARE`) → per-user advisory lock → device |
 | Device edit | customer → device |

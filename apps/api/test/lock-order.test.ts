@@ -57,13 +57,14 @@ async function reopenEvents(ticketId: string) {
 }
 
 describe('erase vs reopen (deadlock fixed by the lock order)', () => {
-  it('a reopen that starts while an erase holds the customer waits for it, then gets 409 CUSTOMER_ERASED (no deadlock, no retry)', async () => {
+  it('a reopen that starts while an erase holds the customer waits for it, then succeeds (no deadlock, no retry)', async () => {
     const retries = spyWarn();
     const t = await checkInNew(owner.agent, { firstName: 'Rhea', lastName: 'Opener' });
     await cancel(t.id);
     // The owner transaction runs exactly what app_erase_customer does, in two steps: it locks the customer (its first
     // statement), the reopen request starts and must wait, then the rest of the erase rewrites the customer's
     // tickets. Before the fix the reopen held the ticket and waited for the customer → lock cycle → 500.
+    // (Reopening a ticket of an erased customer is allowed: story TK-R edge case 4.)
     const res = await whileLockedThen(
       adminDb,
       async (tx) => {
@@ -73,14 +74,14 @@ describe('erase vs reopen (deadlock fixed by the lock order)', () => {
       () => reopen(t.id),
       (tx) => tx.$queryRaw`SELECT app_erase_customer(${t.customer.id})`,
     );
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('CUSTOMER_ERASED');
+    expect(res.status).toBe(200);
     expect(retries()).toEqual([]);
     const row = await adminDb.ticket.findUniqueOrThrow({ where: { id: t.id }, select: { statusCategory: true, reopenCount: true } });
-    expect(row).toEqual({ statusCategory: 'CLOSED', reopenCount: 0 });
+    expect(row).toEqual({ statusCategory: 'OPEN', reopenCount: 1 });
+    expect(await reopenEvents(t.id)).toEqual({ events: 1, audits: 1 });
     const c = await adminDb.customer.findUniqueOrThrow({ where: { id: t.customer.id }, select: { erasedAt: true, openTicketCount: true } });
     expect(c.erasedAt).not.toBeNull();
-    expect(c.openTicketCount).toBe(0);
+    expect(c.openTicketCount).toBe(1);
   });
 
   it('an erase that starts while a reopen holds the customer waits for it, then gets 409 CUSTOMER_HAS_OPEN_TICKETS', async () => {
@@ -103,17 +104,18 @@ describe('erase vs reopen (deadlock fixed by the lock order)', () => {
     expect(c.erasedAt).toBeNull();
   });
 
-  it('reopen and erase of the same customer at the same time (repeated): one wins, the other gets its 409, never a 500', async () => {
+  it('reopen and erase of the same customer at the same time (repeated): no 500, the erase only when it went first', async () => {
     for (let i = 0; i < 8; i++) {
       const t = await checkInNew(owner.agent);
       await cancel(t.id);
       const [r, e] = await Promise.all([reopen(t.id), owner.agent.post(`/api/customers/${t.customer.id}/erase`).send({ confirm: 'ERASE' })]);
-      const outcome = [r.status, e.status].join();
-      expect(['200,409', '409,200']).toContain(outcome);
-      if (r.status === 409) expect(r.body.code).toBe('CUSTOMER_ERASED');
+      // Erase first → the reopen waits and then succeeds; reopen first → the erase sees the open ticket.
+      expect(r.status).toBe(200);
+      expect([200, 409]).toContain(e.status);
       if (e.status === 409) expect(e.body.code).toBe('CUSTOMER_HAS_OPEN_TICKETS');
-      const c = await adminDb.customer.findUniqueOrThrow({ where: { id: t.customer.id }, select: { openTicketCount: true } });
-      expect(c.openTicketCount).toBe(r.status === 200 ? 1 : 0);
+      const c = await adminDb.customer.findUniqueOrThrow({ where: { id: t.customer.id }, select: { openTicketCount: true, erasedAt: true } });
+      expect(c.openTicketCount).toBe(1);
+      expect(c.erasedAt !== null).toBe(e.status === 200);
     }
   });
 });

@@ -103,7 +103,6 @@ async function assertConsistent(f: Fixture, round: number) {
   const open = tickets.filter((t) => t.statusCategory !== 'CLOSED');
   expect(customer.openTicketCount, ctx).toBe(open.length);
   expect(customer.lastVisitAt?.getTime(), ctx).toBe(Math.max(...tickets.map((t) => t.createdAt.getTime())));
-  if (customer.erasedAt) expect(open, ctx).toHaveLength(0);
   for (const t of tickets) {
     expect(t.statusCategory, ctx).toBe(t.status.category);
     const reopened = await adminDb.ticketEvent.count({ where: { ticketId: t.id, type: 'reopened' } });

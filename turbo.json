@@ -15,7 +15,14 @@
     "APP_URL",
     "API_URL",
     "AUTH_RATE_LIMIT_MAX",
-    "TRUST_PROXY"
+    "TRUST_PROXY",
+    "RESEND_API_KEY",
+    "EMAIL_FROM",
+    "EMAIL_OUTBOX_DIR",
+    "EMAIL_DELIVERY",
+    "SHOP_OWNED_LIMIT",
+    "SHOP_CREATE_PER_HOUR",
+    "INVITE_PREVIEW_RATE_LIMIT"
   ],
   "tasks": {
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"] },

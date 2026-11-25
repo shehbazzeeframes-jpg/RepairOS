@@ -1,5 +1,6 @@
 // RepairOS database schema. See packages/db/README.md for tenancy + RLS rules.
-// Tenant tables (have shopId + RLS policy): Location, Membership, TaxRate, AuditLog. Shop is the tenant root.
+// Tenant tables (have shopId + RLS policy): Location, Membership, TaxRate, AuditLog, Invitation, BusinessHours,
+// TimeEntry. Shop is the tenant root.
 // Auth tables (User/Session/Account/Verification) follow Better Auth's Prisma adapter shape.
 
 generator client {
@@ -37,6 +38,32 @@ enum TaxAppliesTo {
   services
 }
 
+enum MembershipStatus {
+  ACTIVE
+  DEACTIVATED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
+enum InviteEmailStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum TimeEntrySource {
+  SELF
+  MANUAL
+}
+
+enum TimeEntryClosedReason {
+  DEACTIVATED
+}
+
 // ---------- Better Auth ----------
 
 model User {
@@ -51,6 +78,7 @@ model User {
   accounts      Account[]
   memberships   Membership[]
   auditLogs     AuditLog[]
+  timeEntries   TimeEntry[]
 
   @@map("users")
 }
@@ -108,7 +136,7 @@ model Verification {
 // ---------- Tenancy ----------
 
 model Shop {
-  id               String       @id @default(cuid())
+  id               String          @id @default(cuid())
   name             String
   country          CountryCode
   currency         CurrencyCode
@@ -122,13 +150,16 @@ model Shop {
   city             String?
   region           String?
   postcode         String?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
   locations        Location[]
   memberships      Membership[]
   taxRates         TaxRate[]
   auditLogs        AuditLog[]
   activeSessions   Session[]
+  invitations      Invitation[]
+  businessHours    BusinessHours[]
+  timeEntries      TimeEntry[]
 
   @@map("shops")
 }
@@ -147,30 +178,112 @@ model Location {
 }
 
 model Membership {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  shopId    String
-  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  role      Role
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                  String           @id @default(cuid())
+  userId              String
+  user                User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shopId              String
+  shop                Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  role                Role
+  /// Only ACTIVE memberships grant access (AuthGuard, /api/me, active-shop switch, RLS shop read).
+  status              MembershipStatus @default(ACTIVE)
+  deactivatedAt       DateTime?
+  deactivatedByUserId String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
   @@unique([userId, shopId])
   @@index([shopId])
+  @@index([shopId, status, role])
   @@map("memberships")
 }
 
+/// Staff invite. The plaintext token (32 random bytes, base64url) is never stored: only its SHA-256.
+/// "Expired" is derived (PENDING and expiresAt < now). One PENDING invite per (shopId, email): partial
+/// unique index `invitations_pending_email_key` (raw SQL in the migration).
+model Invitation {
+  id               String            @id @default(cuid())
+  shopId           String
+  shop             Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  /// Trimmed and lower-cased.
+  email            String
+  role             Role
+  tokenHash        String            @unique
+  status           InvitationStatus  @default(PENDING)
+  expiresAt        DateTime
+  invitedByUserId  String?
+  lastSentAt       DateTime?
+  sendCount        Int               @default(0)
+  emailStatus      InviteEmailStatus @default(QUEUED)
+  /// Set by "Copy invite link" (D10); accepting then does not set emailVerified (D7).
+  linkCopiedAt     DateTime?
+  acceptedAt       DateTime?
+  acceptedByUserId String?
+  revokedAt        DateTime?
+  revokedByUserId  String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([shopId, status])
+  @@index([shopId, createdAt])
+  @@map("invitations")
+}
+
+/// Opening hours, one row per weekday (0 = Sunday … 6 = Saturday). Times are "HH:mm" shop-local.
+model BusinessHours {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  weekday   Int
+  isOpen    Boolean
+  opensAt   String?
+  closesAt  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([shopId, weekday])
+  @@map("business_hours")
+}
+
+/// Clock in/out. One open entry (clockOutAt IS NULL) per (shopId, userId): partial unique index
+/// `time_entries_one_open_key` (raw SQL in the migration). Deleted entries are hard-deleted (audit keeps a snapshot).
+model TimeEntry {
+  id              String                 @id @default(cuid())
+  shopId          String
+  shop            Shop                   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clockInAt       DateTime
+  clockOutAt      DateTime?
+  closedReason    TimeEntryClosedReason?
+  source          TimeEntrySource
+  createdByUserId String?
+  editedAt        DateTime?
+  editedByUserId  String?
+  editReason      String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@index([shopId, clockInAt])
+  @@index([shopId, userId, clockInAt])
+  @@map("time_entries")
+}
+
 model TaxRate {
-  id           String       @id @default(cuid())
-  shopId       String
-  shop         Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  name         String
+  id                String       @id @default(cuid())
+  shopId            String
+  shop              Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name              String
   /// Thousandths of a percent: 8875 = 8.875%, 20000 = 20% (decision D2)
-  rateMilliPct Int
-  appliesTo    TaxAppliesTo @default(all)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  rateMilliPct      Int
+  appliesTo         TaxAppliesTo @default(all)
+  /// D1: one default rate for goods and one for services per shop (an `all` rate may be both).
+  /// Partial unique indexes keep at most one of each among non-archived rates.
+  isDefaultGoods    Boolean      @default(false)
+  isDefaultServices Boolean      @default(false)
+  /// null = active; archived rates are hidden from pickers but kept for history.
+  archivedAt        DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   @@index([shopId])
   @@map("tax_rates")
@@ -190,5 +303,7 @@ model AuditLog {
   createdAt   DateTime @default(now())
 
   @@index([shopId, createdAt])
+  @@index([shopId, actorUserId, createdAt])
+  @@index([shopId, action, createdAt])
   @@map("audit_logs")
 }

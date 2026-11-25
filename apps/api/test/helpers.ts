@@ -1,10 +1,16 @@
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { createApp } from '../src/app.factory';
 import { type AppConfig, loadConfig } from '../src/config';
 
 export const APP_URL = 'http://localhost:3000';
+
+/** One outbox directory per test file (tests send email synchronously into it). */
+export const TEST_OUTBOX_DIR = mkdtempSync(join(tmpdir(), 'repairos-outbox-'));
 
 export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   const appDbUrl = process.env.APP_DATABASE_URL_TEST;
@@ -17,6 +23,10 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
       APP_DATABASE_URL: appDbUrl,
       LOG_LEVEL: 'silent',
       AUTH_RATE_LIMIT_MAX: '1000',
+      INVITE_PREVIEW_RATE_LIMIT: '1000',
+      RESEND_API_KEY: '',
+      EMAIL_OUTBOX_DIR: TEST_OUTBOX_DIR,
+      EMAIL_DELIVERY: 'sync',
     }),
     ...overrides,
   };

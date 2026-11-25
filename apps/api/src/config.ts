@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { type EmailConfig, loadEmailConfig } from '@repairos/email';
 
 export interface AppConfig {
   nodeEnv: string;
@@ -14,6 +15,20 @@ export interface AppConfig {
   trustProxy: boolean | number | string;
   logLevel: string;
   version: string;
+  /** Email provider settings (D6: production requires RESEND_API_KEY and EMAIL_FROM). */
+  email: EmailConfig;
+  /**
+   * How emails leave the API: "queue" (BullMQ `email` queue, processed by apps/worker with retries) or
+   * "sync" (sent in-process right after the transaction; default in tests). EMAIL_DELIVERY overrides.
+   */
+  emailDelivery: 'queue' | 'sync';
+  redisUrl: string;
+  /** §7: max shops a user may own (ACTIVE OWNER memberships). SHOP_OWNED_LIMIT, default 3. */
+  shopOwnedLimit: number;
+  /** §7: max shops a user may create per hour (in-memory, per process). SHOP_CREATE_PER_HOUR, default 5. */
+  shopCreatePerHour: number;
+  /** §3: public invite preview requests per IP per minute. INVITE_PREVIEW_RATE_LIMIT, default 30. */
+  invitePreviewRateLimit: number;
 }
 
 export const CONFIG = Symbol('CONFIG');
@@ -42,6 +57,18 @@ export function parseTrustProxy(raw: string | undefined): boolean | number | str
   return v;
 }
 
+function positiveInt(raw: string | undefined, fallback: number): number {
+  const n = Number(raw);
+  return raw !== undefined && raw !== '' && Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+export function parseEmailDelivery(raw: string | undefined, nodeEnv: string): 'queue' | 'sync' {
+  const v = raw?.trim().toLowerCase();
+  if (v === 'queue' || v === 'sync') return v;
+  if (v) throw new Error('EMAIL_DELIVERY must be "queue" or "sync"');
+  return nodeEnv === 'test' ? 'sync' : 'queue';
+}
+
 const WEAK_SECRETS = new Set(['change-me', 'changeme', 'secret', 'password']);
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -62,5 +89,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     trustProxy: parseTrustProxy(env.TRUST_PROXY),
     logLevel: env.LOG_LEVEL ?? 'info',
     version: readVersion(),
+    email: loadEmailConfig({ ...env, NODE_ENV: nodeEnv }),
+    emailDelivery: parseEmailDelivery(env.EMAIL_DELIVERY, nodeEnv),
+    redisUrl: env.REDIS_URL ?? 'redis://localhost:6379',
+    shopOwnedLimit: positiveInt(env.SHOP_OWNED_LIMIT, 3),
+    shopCreatePerHour: positiveInt(env.SHOP_CREATE_PER_HOUR, 5),
+    invitePreviewRateLimit: positiveInt(env.INVITE_PREVIEW_RATE_LIMIT, 30),
   };
 }

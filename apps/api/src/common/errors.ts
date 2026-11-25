@@ -1,5 +1,5 @@
 import { HttpException } from '@nestjs/common';
-import type { ApiError, ApiErrorCode } from '@repairos/contracts';
+import { API_ERROR_MESSAGES, API_ERROR_STATUS, type ApiError, type ApiErrorCode } from '@repairos/contracts';
 
 /** Every code, with its HTTP status, is listed in contracts (`ApiErrorCode`, `API_ERROR_STATUS`). */
 export type { ApiErrorCode };
@@ -23,6 +23,19 @@ export const validationFailed = (issues: ApiIssue[], message = 'Validation faile
 
 export const forbidden = (message = 'You do not have access to this resource') =>
   new ApiException(403, 'FORBIDDEN', message);
+
+export const notFound = (message = 'Not found') => new ApiException(404, 'NOT_FOUND', message);
+
+/** Fills `{placeholders}` in a contracts message. */
+export function fillMessage(template: string, vars: Record<string, string> = {}): string {
+  return template.replace(/\{(\w+)\}/g, (m, k: string) => vars[k] ?? m);
+}
+
+/** A domain error with the contracts status and default message (placeholders filled from `vars`). */
+export function apiError(code: ApiErrorCode, vars?: Record<string, string>, message?: string): ApiException {
+  const template = message ?? API_ERROR_MESSAGES[code] ?? code;
+  return new ApiException(API_ERROR_STATUS[code], code, fillMessage(template, vars));
+}
 
 export const STATUS_TO_CODE: Record<number, ApiErrorCode> = {
   400: 'VALIDATION_FAILED',

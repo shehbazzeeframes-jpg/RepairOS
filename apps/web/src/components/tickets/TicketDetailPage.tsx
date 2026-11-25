@@ -427,7 +427,7 @@ export function TicketDetailPage({ id }: { id: string }) {
                 {
                   key: 'label',
                   header: 'Checklist item',
-                  width: proportional(2, { minWidth: 140 }),
+                  width: proportional(1, { minWidth: 140 }),
                 },
                 {
                   key: 'result',

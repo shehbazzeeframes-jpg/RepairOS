@@ -191,6 +191,7 @@ test('API validation errors land on the fields', async ({ page }) => {
     },
   });
   await page.goto('/tickets/new');
+  await expect(page.getByRole('combobox', { name: 'Find customer' })).toBeFocused();
   await page.keyboard.type('Jo Bloggs');
   await page.getByRole('option', { name: /New customer/ }).click();
   await page.getByRole('textbox', { name: 'Phone' }).fill('07400 900124');

@@ -331,6 +331,8 @@ export function TicketListPage() {
             onChange={(v) => update({ deviceType: v as DeviceTypeValue[] })}
             width={150}
           />
+        </HStack>
+        <HStack gap={3} wrap="wrap" vAlign="end">
           <SegmentedControl
             label="Priority"
             value={filters.priority ?? 'ANY'}
@@ -341,8 +343,6 @@ export function TicketListPage() {
             <SegmentedControlItem value="NORMAL" label="Normal" />
             <SegmentedControlItem value="URGENT" label="Urgent" />
           </SegmentedControl>
-        </HStack>
-        <HStack gap={3} wrap="wrap" vAlign="end">
           <DateRangeInput
             label="Created"
             isLabelHidden
@@ -371,6 +371,7 @@ export function TicketListPage() {
           ) : null}
           <Selector
             label="Sort"
+            isLabelHidden
             size="sm"
             value={filters.sort}
             onChange={(v) => v && update({ sort: v as TicketSort })}

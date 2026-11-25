@@ -498,6 +498,7 @@ export function CustomerForm({ customer }: { customer: CustomerDetail | null }) 
               name="preferredChannel"
               render={({ field, fieldState }) => (
                 <VStack gap={2}>
+                  <Text weight="medium">Preferred contact</Text>
                   <SegmentedControl
                     label="Preferred contact"
                     value={field.value}

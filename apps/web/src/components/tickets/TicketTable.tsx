@@ -17,7 +17,7 @@ import { PhoneText } from '@/components/ui/PhoneText';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { onRowLinkKeyDown } from '@/lib/focus';
 import { useSession } from '@/lib/shop-context';
-import { formatLongDate } from '@/lib/timezone';
+import { formatShortDate } from '@/lib/timezone';
 
 export function AssigneeText({ assignee }: { assignee: UserRef | null }) {
   if (!assignee) return <Text color="secondary">Unassigned</Text>;
@@ -96,7 +96,7 @@ export function TicketTable({
     {
       key: 'customer',
       header: 'Customer',
-      width: proportional(2, { minWidth: 140 }),
+      width: proportional(1, { minWidth: 140 }),
       renderCell: (t: TicketListItem) => (
         <VStack gap={0.5}>
           <Text maxLines={1} weight="medium">
@@ -111,13 +111,13 @@ export function TicketTable({
     {
       key: 'device',
       header: 'Device',
-      width: proportional(2, { minWidth: 120 }),
+      width: proportional(1, { minWidth: 120 }),
       renderCell: (t: TicketListItem) => <Text maxLines={2}>{deviceLabel(t.device)}</Text>,
     },
     {
       key: 'issues',
       header: 'Issues',
-      width: proportional(2, { minWidth: 120 }),
+      width: proportional(1, { minWidth: 120 }),
       renderCell: (t: TicketListItem) => (
         <Text maxLines={2} color={t.issues.length ? 'primary' : 'secondary'}>
           {issuesText(t)}
@@ -127,13 +127,13 @@ export function TicketTable({
     {
       key: 'status',
       header: 'Status',
-      width: proportional(2, { minWidth: 130 }),
+      width: proportional(1, { minWidth: 130 }),
       renderCell: (t: TicketListItem) => <StatusBadge {...t.status} />,
     },
     {
       key: 'assignee',
       header: 'Assignee',
-      width: proportional(2, { minWidth: 120 }),
+      width: proportional(1, { minWidth: 120 }),
       renderCell: (t: TicketListItem) => <AssigneeText assignee={t.assignee} />,
     },
     {
@@ -167,7 +167,7 @@ export function TicketTable({
       width: pixel(128),
       renderCell: (t: TicketListItem) => (
         <Text color="secondary" hasTabularNumbers>
-          {formatLongDate(t.createdAt, shop)}
+          {formatShortDate(t.createdAt, shop)}
         </Text>
       ),
     },

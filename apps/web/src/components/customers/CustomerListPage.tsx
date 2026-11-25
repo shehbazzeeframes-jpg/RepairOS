@@ -46,7 +46,7 @@ import {
 } from '@/lib/list-params';
 import { useSession } from '@/lib/shop-context';
 import { useCustomerList, useCustomerTags } from '@/lib/sprint2-queries';
-import { formatLongDate } from '@/lib/timezone';
+import { formatShortDate } from '@/lib/timezone';
 
 const toRange = (from: string | null, to: string | null) =>
   from && to ? { start: from as ISODateString, end: to as ISODateString } : null;
@@ -114,7 +114,7 @@ export function CustomerListPage() {
     {
       key: 'name',
       header: 'Name',
-      width: proportional(3, { minWidth: 160 }),
+      width: proportional(1, { minWidth: 160 }),
       renderCell: (c) => (
         <VStack gap={0.5}>
           <HStack gap={2} vAlign="center" wrap="wrap">
@@ -135,7 +135,7 @@ export function CustomerListPage() {
     {
       key: 'phone',
       header: 'Phone',
-      width: proportional(2, { minWidth: 130 }),
+      width: proportional(1, { minWidth: 130 }),
       renderCell: (c) =>
         c.primaryPhone ? (
           <PhoneText e164={c.primaryPhone} shopCountry={shop.country} />
@@ -146,7 +146,7 @@ export function CustomerListPage() {
     {
       key: 'email',
       header: 'Email',
-      width: proportional(2, { minWidth: 120 }),
+      width: proportional(1, { minWidth: 120 }),
       renderCell: (c) => (
         <Text color="secondary" maxLines={1}>
           {c.email ?? '—'}
@@ -156,7 +156,7 @@ export function CustomerListPage() {
     {
       key: 'tags',
       header: 'Tags',
-      width: proportional(2, { minWidth: 120 }),
+      width: proportional(1, { minWidth: 120 }),
       renderCell: (c) => (
         <HStack gap={1} wrap="wrap">
           {c.tags.slice(0, 2).map((t) => (
@@ -179,7 +179,7 @@ export function CustomerListPage() {
       width: pixel(128),
       renderCell: (c) => (
         <Text color="secondary">
-          {c.lastVisitAt ? formatLongDate(c.lastVisitAt, shop) : 'Never'}
+          {c.lastVisitAt ? formatShortDate(c.lastVisitAt, shop) : 'Never'}
         </Text>
       ),
     },
@@ -187,7 +187,7 @@ export function CustomerListPage() {
       key: 'created',
       header: 'Created',
       width: pixel(128),
-      renderCell: (c) => <Text color="secondary">{formatLongDate(c.createdAt, shop)}</Text>,
+      renderCell: (c) => <Text color="secondary">{formatShortDate(c.createdAt, shop)}</Text>,
     },
   ];
 
@@ -271,6 +271,7 @@ export function CustomerListPage() {
         />
         <Selector
           label="Sort"
+          isLabelHidden
           size="sm"
           value={filters.sort}
           onChange={(v) => v && update({ sort: v as CustomerSort })}

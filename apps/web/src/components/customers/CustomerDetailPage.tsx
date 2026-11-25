@@ -526,7 +526,7 @@ export function CustomerDetailPage({ id }: { id: string }) {
                 {
                   key: 'device',
                   header: 'Device',
-                  width: proportional(3, { minWidth: 160 }),
+                  width: proportional(1, { minWidth: 160 }),
                   renderCell: (d) => (
                     <VStack gap={0.5}>
                       <HStack gap={2} vAlign="center" wrap="wrap">
@@ -543,7 +543,7 @@ export function CustomerDetailPage({ id }: { id: string }) {
                 {
                   key: 'id',
                   header: 'IMEI / serial',
-                  width: proportional(2, { minWidth: 140 }),
+                  width: proportional(1, { minWidth: 140 }),
                   renderCell: (d) =>
                     d.imei || d.serial ? (
                       <Identifier value={(d.imei ?? d.serial) as string} />
@@ -674,7 +674,7 @@ export function CustomerDetailPage({ id }: { id: string }) {
                     {
                       key: 'channel',
                       header: 'Channel',
-                      width: proportional(2, { minWidth: 140 }),
+                      width: proportional(1, { minWidth: 140 }),
                       renderCell: (e) => CONSENT_CHANNEL_LABELS[e.channel],
                     },
                     {
@@ -691,7 +691,7 @@ export function CustomerDetailPage({ id }: { id: string }) {
                     {
                       key: 'source',
                       header: 'Source',
-                      width: proportional(2, { minWidth: 120 }),
+                      width: proportional(1, { minWidth: 120 }),
                       renderCell: (e) => CONSENT_SOURCE_LABELS[e.source],
                     },
                     {
@@ -703,7 +703,7 @@ export function CustomerDetailPage({ id }: { id: string }) {
                     {
                       key: 'note',
                       header: 'Note',
-                      width: proportional(2, { minWidth: 100 }),
+                      width: proportional(1, { minWidth: 100 }),
                       renderCell: (e) => e.note ?? '',
                     },
                   ]}

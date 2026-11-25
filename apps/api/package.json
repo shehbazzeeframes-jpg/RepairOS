@@ -27,7 +27,9 @@
     "pino": "^9.6.0",
     "pino-http": "^10.5.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "@repairos/email": "workspace:*",
+    "bullmq": "^5.34.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

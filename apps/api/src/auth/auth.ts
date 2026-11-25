@@ -1,7 +1,11 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import type { PrismaClient } from '@repairos/db';
+import { type EmailMessage, passwordResetEmail } from '@repairos/email';
 import type { AppConfig } from '../config';
+
+/** Password-reset links are valid for one hour (Better Auth default, stated in the email). */
+export const RESET_PASSWORD_TOKEN_TTL_SECONDS = 60 * 60;
 
 export const AUTH = Symbol('AUTH');
 
@@ -9,7 +13,7 @@ export const AUTH = Symbol('AUTH');
  * Better Auth: email + password, sessions stored in Postgres (sessions table), httpOnly cookies.
  * The browser reaches /api/auth/* through the web app's same-origin proxy, so baseURL is APP_URL.
  */
-export function createAuth(prisma: PrismaClient, config: AppConfig) {
+export function createAuth(prisma: PrismaClient, config: AppConfig, sendEmail: (message: EmailMessage) => Promise<void>) {
   return betterAuth({
     appName: 'RepairOS',
     baseURL: config.appUrl,
@@ -22,6 +26,14 @@ export function createAuth(prisma: PrismaClient, config: AppConfig) {
       minPasswordLength: 8,
       maxPasswordLength: 128,
       autoSignIn: true,
+      // D4: "Forgot password". The emailed link is Better Auth's callback ({APP_URL}/api/auth/reset-password/<token>
+      // ?callbackURL=<redirectTo>), which redirects to `${APP_URL}/reset-password?token=…`.
+      resetPasswordTokenExpiresIn: RESET_PASSWORD_TOKEN_TTL_SECONDS,
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: async ({ user, url }) => {
+        const email = passwordResetEmail({ name: user.name, url, expiresIn: '1 hour' });
+        await sendEmail({ to: user.email, ...email });
+      },
     },
     session: {
       expiresIn: 60 * 60 * 24 * 30, // 30 days

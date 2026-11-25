@@ -10,7 +10,7 @@ import { pino } from 'pino';
 import { pinoHttp } from 'pino-http';
 import { AppModule } from './app.module';
 import { AUTH, type Auth } from './auth/auth';
-import { authRateLimits } from './auth/rate-limit';
+import { authRateLimits, invitePreviewRateLimit } from './auth/rate-limit';
 import { ApiErrorFilter, toApiError } from './common/api-error.filter';
 import { jsonBody } from './common/json-body';
 import type { AppConfig } from './config';
@@ -63,7 +63,8 @@ export async function createApp(config: AppConfig): Promise<NestExpressApplicati
   app.setGlobalPrefix('api');
   app.useGlobalFilters(new ApiErrorFilter());
 
-  app.use(authRateLimits(config.authRateLimitMax));
+  app.use(authRateLimits(config.authRateLimitMax, config.appUrl));
+  app.use(invitePreviewRateLimit(config.invitePreviewRateLimit));
 
   const auth = app.get<Auth>(AUTH);
   server.all('/api/auth/{*path}', toNodeHandler(auth));

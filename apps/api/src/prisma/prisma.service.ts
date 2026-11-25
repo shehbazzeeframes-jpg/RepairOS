@@ -4,6 +4,7 @@ import {
   createPrismaClient,
   tenantDb,
   userTx,
+  type MembershipStatus,
   type Prisma,
   type PrismaClient,
   type Role,
@@ -11,6 +12,14 @@ import {
   type TenantDb,
 } from '@repairos/db';
 import { CONFIG, type AppConfig } from '../config';
+
+export interface MembershipRef {
+  shopId: string;
+  role: Role;
+  status: MembershipStatus;
+  createdAt: Date;
+  deactivatedAt: Date | null;
+}
 
 /**
  * Owns the Prisma connection (as repairos_app) and hands out scoped access.
@@ -38,10 +47,22 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return userTx(this.base, userId, fn);
   }
 
-  async findMembership(userId: string, shopId: string): Promise<{ shopId: string; role: Role } | null> {
+  /** All of a user's memberships (any status), oldest first. Callers decide what DEACTIVATED means. */
+  async membershipsOf(userId: string): Promise<MembershipRef[]> {
     return this.forUser(userId, (tx) =>
-      tx.membership.findUnique({
-        where: { userId_shopId: { userId, shopId } },
+      tx.membership.findMany({
+        where: { userId },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: { shopId: true, role: true, status: true, createdAt: true, deactivatedAt: true },
+      }),
+    );
+  }
+
+  /** The user's ACTIVE membership in a shop, or null (deactivated memberships never count: Risk #1). */
+  async findActiveMembership(userId: string, shopId: string): Promise<{ shopId: string; role: Role } | null> {
+    return this.forUser(userId, (tx) =>
+      tx.membership.findFirst({
+        where: { userId, shopId, status: 'ACTIVE' },
         select: { shopId: true, role: true },
       }),
     );

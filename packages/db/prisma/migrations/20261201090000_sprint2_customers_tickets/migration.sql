@@ -459,10 +459,11 @@ ALTER TABLE "ticket_events" ADD CONSTRAINT "ticket_events_shopId_noteId_fkey" FO
 -- =====================================================================================================
 
 -- ---------- Generated search column ----------
--- customers."searchText" = lower(unaccent(names + business + contact + email)), the column the trigram index
+-- customers."searchText" = ' ' || lower(unaccent(first last business contact email)), the column the trigram index
 -- covers. Generated, so it can never drift from the source columns and erasure clears it automatically.
+-- The leading space makes "starts a word" a single pattern: LIKE '% al%' (used for 1-2 character words).
 ALTER TABLE "customers" ADD COLUMN "searchText" TEXT GENERATED ALWAYS AS (
-  lower(public.f_unaccent(
+  ' ' || lower(public.f_unaccent(
     coalesce("firstName", '') || ' ' || coalesce("lastName", '') || ' ' || coalesce("businessName", '') || ' ' ||
     coalesce("businessContactName", '') || ' ' || coalesce("email", '')
   ))
@@ -683,8 +684,9 @@ CREATE OR REPLACE FUNCTION app_like_escape(p text) RETURNS text
 AS $$ SELECT replace(replace(replace(p, '\', '\\'), '%', '\%'), '_', '\_') $$;
 
 -- Customers matching a free-text query in the CURRENT shop (app.shop_id), never erased ones:
---   * every word of the query is contained in "searchText" (names, business, contact, email; case/accent-blind,
---     any word order), ranked: display name starts with the first word > better trigram similarity;
+--   * every word of the query is in "searchText" (names, business, contact, email; case/accent-blind, any word
+--     order): contained for 3+ characters, at a word start for 1-2; ranked: starts with the first word typed,
+--     then trigram similarity;
 --   * p_e164 (the query normalised by the API with normalizePhone) equals one of their phones;
 --   * 4+ digits of the query are contained in one of their phones (E.164 digits);
 --   * with p_match_devices, 4+ letters/digits are contained in one of their devices' IMEI or serial.
@@ -713,41 +715,53 @@ BEGIN
   IF v_shop IS NULL THEN
     RETURN;
   END IF;
-  -- Up to 8 words; the longest first (most selective: it drives the trigram index scan).
-  SELECT array_agg('%' || public.app_like_escape(w) || '%' ORDER BY length(w) DESC, w)
+  -- Up to 8 words; the longest first (most selective: it drives the trigram index scan). Words of 3+ characters
+  -- match anywhere ("han" finds Khan); 1-2 character words match the start of a word ("al" finds Ali and Alvarez,
+  -- not Khalid): a 2-letter "contains" matches a fifth of all customers and has no trigram to use the index with.
+  SELECT array_agg(CASE WHEN char_length(w) < 3 THEN '% ' ELSE '%' END || public.app_like_escape(w) || '%'
+                   ORDER BY char_length(w) DESC, w)
     INTO v_terms
     FROM (SELECT w FROM regexp_split_to_table(v_norm, '\s+') AS w WHERE w <> '' LIMIT 8) AS words;
   v_first := public.app_like_escape(split_part(v_norm, ' ', 1)) || '%';
 
   RETURN QUERY
-  SELECT h."customerId", max(h.score)::real
-  FROM (
+  WITH hits AS (
+    -- Rank: the name starts with the first word typed (+1), then trigram similarity. For a 1-2 character query
+    -- similarity means nothing and would be computed for thousands of rows: shorter texts rank first instead.
     SELECT c."id" AS "customerId",
-           ((CASE WHEN lower(public.f_unaccent(c."displayName")) LIKE v_first THEN 1 ELSE 0 END)
-             + public.similarity(c."searchText", v_norm))::real AS score
+           ((CASE WHEN ltrim(c."searchText") LIKE v_first THEN 1 ELSE 0 END)
+             + CASE WHEN char_length(v_norm) >= 3 THEN public.similarity(c."searchText", v_norm)
+                    ELSE 1.0 / (1 + char_length(c."searchText")) END)::real AS score
     FROM public.customers c
     WHERE char_length(replace(v_norm, ' ', '')) >= 2
       AND c."shopId" = v_shop
       AND c."searchText" LIKE v_terms[1]
       AND c."searchText" LIKE ALL (v_terms)
+      AND c."erasedAt" IS NULL AND (p_include_archived OR c."archivedAt" IS NULL)
     UNION ALL
-    SELECT p."customerId", 3::real
-    FROM public.customer_phones p
-    WHERE p_e164 IS NOT NULL AND p."shopId" = v_shop AND p."e164" = p_e164
-    UNION ALL
-    SELECT p."customerId", 2::real
-    FROM public.customer_phones p
-    WHERE char_length(v_digits) >= 4 AND p."shopId" = v_shop AND p."digits" LIKE '%' || v_digits || '%'
-    UNION ALL
-    SELECT d."customerId", (CASE WHEN d."imei" = v_dev OR d."serial" = v_dev THEN 3 ELSE 2 END)::real
-    FROM public.devices d
-    WHERE p_match_devices AND char_length(v_dev) >= 4 AND d."shopId" = v_shop
-      AND (d."imei" LIKE '%' || v_dev || '%' OR d."serial" LIKE '%' || v_dev || '%')
-  ) AS h
-  JOIN public.customers c ON c."id" = h."customerId" AND c."shopId" = v_shop
-  WHERE c."erasedAt" IS NULL AND (p_include_archived OR c."archivedAt" IS NULL)
+    SELECT x."customerId", x.score
+    FROM (
+      SELECT p."customerId", 3::real AS score
+      FROM public.customer_phones p
+      WHERE p_e164 IS NOT NULL AND p."shopId" = v_shop AND p."e164" = p_e164
+      UNION ALL
+      SELECT p."customerId", 2::real
+      FROM public.customer_phones p
+      WHERE char_length(v_digits) >= 4 AND p."shopId" = v_shop AND p."digits" LIKE '%' || v_digits || '%'
+      UNION ALL
+      SELECT d."customerId", (CASE WHEN d."imei" = v_dev OR d."serial" = v_dev THEN 3 ELSE 2 END)::real
+      FROM public.devices d
+      WHERE p_match_devices AND char_length(v_dev) >= 4 AND d."shopId" = v_shop
+        AND (d."imei" LIKE '%' || v_dev || '%' OR d."serial" LIKE '%' || v_dev || '%')
+    ) AS x
+    JOIN public.customers c ON c."id" = x."customerId" AND c."shopId" = v_shop
+    WHERE c."erasedAt" IS NULL AND (p_include_archived OR c."archivedAt" IS NULL)
+  )
+  SELECT h."customerId", max(h.score)::real
+  FROM hits h
   GROUP BY h."customerId"
-  ORDER BY 2 DESC, 1
+  -- Sorting only matters with a limit (global search, check-in); list queries sort the joined rows themselves.
+  ORDER BY CASE WHEN p_limit IS NULL THEN NULL ELSE max(h.score) END DESC NULLS LAST, 1
   LIMIT p_limit;
 END
 $$;

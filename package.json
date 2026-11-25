@@ -13,6 +13,7 @@
     "e2e:real": "pnpm --filter @repairos/e2e test:real",
     "db:migrate": "pnpm --filter @repairos/db migrate",
     "db:seed": "pnpm --filter @repairos/db seed",
+    "db:seed:perf": "pnpm --filter @repairos/db seed:perf",
     "format": "prettier --write ."
   },
   "devDependencies": {

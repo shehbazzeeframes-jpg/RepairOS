@@ -27,7 +27,10 @@
 --     is replaced where it stands: an optional "+" / "(" and up to 3 non-alphanumeric separators between digits
 --     ("(212) 255-4321", "212.255.4321", "+1 212-255-4321"); if the digits-only copy still contains the number
 --     after that (unusual separators), a second pass allows up to 8 non-digit characters between digits. A number
---     is never matched inside a longer run of digits. National numbers shorter than 7 digits are not used.
+--     is never matched inside a longer run of digits. National numbers shorter than 7 digits are not used. In rows
+--     that are not the customer's, a cheap pre-filter first requires the last 4 digits written together.
+--   * Cost: one pass over the shop's tickets, issues, notes, events and audit rows with LIKE pre-filters (about 1.5 s
+--     for 100k tickets / 420k events on the perf dataset); only matching rows are run through the regular expressions.
 --   * Longer values are replaced first, so "Zelda Quixote" becomes one "[erased]", not "[erased] [erased]".
 --   * Note bodies keep the 2000-character CHECK (truncated in the rare case "[erased]" makes one longer).
 -- Not redacted: city and region (too common to match safely; the customer row itself is cleared), ticket numbers,
@@ -61,7 +64,7 @@ $$;
 -- Replaces every match of p_patterns (case-insensitive) and of the phone digit strings p_phones (longest first)
 -- with '[erased]'. NULL in → NULL out.
 CREATE OR REPLACE FUNCTION app_redact_text(p_text text, p_patterns text[], p_phones text[]) RETURNS text
-  LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE
+  LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE COST 10000 -- expensive: the planner checks the cheap pre-filter first
   SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
@@ -89,7 +92,7 @@ $$;
 
 -- app_redact_text applied to every string value of a JSON document (keys and non-string values unchanged).
 CREATE OR REPLACE FUNCTION app_redact_jsonb(p_doc jsonb, p_patterns text[], p_phones text[]) RETURNS jsonb
-  LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE
+  LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE COST 10000 -- expensive: the planner checks the cheap pre-filter first
   SET search_path = pg_catalog, public, pg_temp
 AS $$
 BEGIN
@@ -107,14 +110,20 @@ BEGIN
 END
 $$;
 
--- Cheap pre-filter for rows of the shop that are not the customer's: may p_text contain a strong value or a phone?
-CREATE OR REPLACE FUNCTION app_erase_may_match(p_text text, p_any_re text, p_phones text[]) RETURNS boolean
+-- Cheap pre-filter for the shop's rows that are not the customer's (every ticket, issue, note and timeline event of
+-- the shop is looked at): may p_text contain a strong value (p_token_likes: '%<longest word of the value>%',
+-- lower-cased) or one of the phones (p_last4_likes: its last 4 digits appear literally, AND p_phone_likes: the
+-- digits-only copy contains it)? A superset test: matching rows then go through app_redact_text. A phone written
+-- with a separator inside its last 4 digits ("255-43 21") is therefore only found in the customer's own records.
+-- One expression without sub-queries and no SET clause, so the planner inlines it (it only runs inside
+-- app_erase_customer, which pins search_path); pass '{}' rather than NULL arrays.
+CREATE OR REPLACE FUNCTION app_erase_may_match(p_text text, p_token_likes text[], p_last4_likes text[], p_phone_likes text[])
+  RETURNS boolean
   LANGUAGE sql IMMUTABLE PARALLEL SAFE
-  SET search_path = pg_catalog, public, pg_temp
 AS $$
   SELECT p_text IS NOT NULL AND (
-    (p_any_re IS NOT NULL AND p_text ~* p_any_re)
-    OR EXISTS (SELECT 1 FROM unnest(coalesce(p_phones, '{}')) AS d WHERE strpos(regexp_replace(p_text, '[^0-9]', '', 'g'), d) > 0)
+    lower(p_text) LIKE ANY (p_token_likes)
+    OR (p_text LIKE ANY (p_last4_likes) AND regexp_replace(p_text, '[^0-9]', '', 'g') LIKE ANY (p_phone_likes))
   )
 $$;
 
@@ -123,7 +132,7 @@ REVOKE ALL ON FUNCTION app_erase_word_pattern(text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION app_erase_phone_pattern(text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION app_redact_text(text, text[], text[]) FROM PUBLIC;
 REVOKE ALL ON FUNCTION app_redact_jsonb(jsonb, text[], text[]) FROM PUBLIC;
-REVOKE ALL ON FUNCTION app_erase_may_match(text, text, text[]) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app_erase_may_match(text, text[], text[], text[]) FROM PUBLIC;
 
 -- ---------- Erasure (CU9, A11 + tech lead clarification + A11-b) ----------
 -- Anonymises one customer of the CURRENT shop, in the caller's transaction:
@@ -151,7 +160,10 @@ DECLARE
   v_ticket_ids text[];
   v_strong     text[];   -- patterns of strong values, longest value first
   v_all        text[];   -- patterns of strong + weak values, longest value first
-  v_any_re     text;     -- the strong patterns as one alternation (pre-filter for other rows)
+  v_tokens     text[];   -- longest word of each strong value, lower-cased (pre-filter for other rows)
+  v_token_likes text[];  -- the same as LIKE patterns
+  v_last4_likes text[];  -- each phone's last 4 digits as a LIKE pattern
+  v_phone_likes text[];  -- each phone digit string as a LIKE pattern
   v_phones     text[];   -- phone digit strings, longest first
   v_phones_n   integer;
   v_consents   integer;
@@ -194,17 +206,18 @@ BEGIN
     UNION ALL SELECT "serial", true FROM public.devices WHERE "shopId" = v_shop AND "customerId" = p_customer_id
   ),
   pats AS (
-    SELECT public.app_erase_word_pattern(v, CASE WHEN strong THEN 4 ELSE 2 END) AS p, strong, char_length(btrim(v)) AS len
+    SELECT public.app_erase_word_pattern(v, CASE WHEN strong THEN 4 ELSE 2 END) AS p, strong, char_length(btrim(v)) AS len,
+           (SELECT lower(w) FROM regexp_split_to_table(btrim(v), '\s+') AS w ORDER BY char_length(w) DESC, w LIMIT 1) AS tok
     FROM vals WHERE v IS NOT NULL
   ),
   uniq AS (
-    SELECT p, bool_or(strong) AS strong, max(len) AS len FROM pats WHERE p IS NOT NULL GROUP BY p
+    SELECT p, bool_or(strong) AS strong, max(len) AS len, max(tok) AS tok FROM pats WHERE p IS NOT NULL GROUP BY p
   )
   SELECT coalesce(array_agg(p ORDER BY len DESC, p) FILTER (WHERE strong), '{}'),
-         coalesce(array_agg(p ORDER BY len DESC, p), '{}')
-    INTO v_strong, v_all
+         coalesce(array_agg(p ORDER BY len DESC, p), '{}'),
+         coalesce(array_agg(DISTINCT tok) FILTER (WHERE strong), '{}')
+    INTO v_strong, v_all, v_tokens
     FROM uniq;
-  v_any_re := nullif(array_to_string(v_strong, '|'), '');
 
   -- Phone digit strings: international digits, national significant number (+ trunk "0" form for UK/PK).
   SELECT coalesce(array_agg(DISTINCT d ORDER BY d), '{}') INTO v_phones
@@ -228,6 +241,9 @@ BEGIN
   WHERE d IS NOT NULL AND char_length(d) >= 7;
   -- longest first, so the international form is replaced before the national number inside it
   SELECT coalesce(array_agg(d ORDER BY char_length(d) DESC, d), '{}') INTO v_phones FROM unnest(v_phones) AS d;
+  v_token_likes := ARRAY(SELECT '%' || public.app_like_escape(tok) || '%' FROM unnest(v_tokens) AS tok);
+  v_last4_likes := ARRAY(SELECT DISTINCT '%' || right(d, 4) || '%' FROM unnest(v_phones) AS d);
+  v_phone_likes := ARRAY(SELECT '%' || d || '%' FROM unnest(v_phones) AS d);
   v_phones := CASE WHEN cardinality(v_phones) = 0 THEN NULL ELSE v_phones END;
 
   -- Tickets: the customer's own (strong + weak) and any other ticket of the shop that may mention them (strong).
@@ -238,7 +254,7 @@ BEGIN
          "accessoriesOther" = public.app_redact_text(t."accessoriesOther", CASE WHEN t."customerId" = p_customer_id THEN v_all ELSE v_strong END, v_phones)
    WHERE t."shopId" = v_shop
      AND (t."customerId" = p_customer_id
-          OR public.app_erase_may_match(concat_ws(' ', t."description", t."conditionNotes", t."cancelNote", t."accessoriesOther"), v_any_re, v_phones))
+          OR public.app_erase_may_match(concat_ws(' ', t."description", t."conditionNotes", t."cancelNote", t."accessoriesOther"), v_token_likes, v_last4_likes, v_phone_likes))
      AND (t."description", t."conditionNotes", t."cancelNote", t."accessoriesOther") IS DISTINCT FROM (
           public.app_redact_text(t."description",      CASE WHEN t."customerId" = p_customer_id THEN v_all ELSE v_strong END, v_phones),
           public.app_redact_text(t."conditionNotes",   CASE WHEN t."customerId" = p_customer_id THEN v_all ELSE v_strong END, v_phones),
@@ -250,7 +266,7 @@ BEGIN
   UPDATE public.ticket_issues i
      SET "label" = public.app_redact_text(i."label", CASE WHEN i."ticketId" = ANY (v_ticket_ids) THEN v_all ELSE v_strong END, v_phones)
    WHERE i."shopId" = v_shop
-     AND (i."ticketId" = ANY (v_ticket_ids) OR public.app_erase_may_match(i."label", v_any_re, v_phones))
+     AND (i."ticketId" = ANY (v_ticket_ids) OR public.app_erase_may_match(i."label", v_token_likes, v_last4_likes, v_phone_likes))
      AND i."label" IS DISTINCT FROM public.app_redact_text(i."label", CASE WHEN i."ticketId" = ANY (v_ticket_ids) THEN v_all ELSE v_strong END, v_phones);
   GET DIAGNOSTICS v_n = ROW_COUNT;
   v_text := v_text + v_n;
@@ -258,7 +274,7 @@ BEGIN
   UPDATE public.ticket_notes n
      SET "body" = left(public.app_redact_text(n."body", CASE WHEN n."ticketId" = ANY (v_ticket_ids) THEN v_all ELSE v_strong END, v_phones), 2000)
    WHERE n."shopId" = v_shop
-     AND (n."ticketId" = ANY (v_ticket_ids) OR public.app_erase_may_match(n."body", v_any_re, v_phones))
+     AND (n."ticketId" = ANY (v_ticket_ids) OR public.app_erase_may_match(n."body", v_token_likes, v_last4_likes, v_phone_likes))
      AND n."body" IS DISTINCT FROM left(public.app_redact_text(n."body", CASE WHEN n."ticketId" = ANY (v_ticket_ids) THEN v_all ELSE v_strong END, v_phones), 2000);
   GET DIAGNOSTICS v_n = ROW_COUNT;
   v_text := v_text + v_n;
@@ -267,7 +283,7 @@ BEGIN
      SET "data" = public.app_redact_jsonb(e."data", CASE WHEN e."ticketId" = ANY (v_ticket_ids) THEN v_all ELSE v_strong END, v_phones)
    WHERE e."shopId" = v_shop
      AND e."data" IS NOT NULL
-     AND (e."ticketId" = ANY (v_ticket_ids) OR public.app_erase_may_match(e."data"::text, v_any_re, v_phones))
+     AND (e."ticketId" = ANY (v_ticket_ids) OR public.app_erase_may_match(e."data"::text, v_token_likes, v_last4_likes, v_phone_likes))
      AND e."data" IS DISTINCT FROM public.app_redact_jsonb(e."data", CASE WHEN e."ticketId" = ANY (v_ticket_ids) THEN v_all ELSE v_strong END, v_phones);
   GET DIAGNOSTICS v_n = ROW_COUNT;
   v_text := v_text + v_n;
@@ -286,7 +302,7 @@ BEGIN
       AND (   (a."entityType" = 'Customer' AND a."entityId" = p_customer_id)
            OR (a."entityType" = 'Device' AND a."entityId" = ANY (v_device_ids))
            OR (a."entityType" = 'Ticket' AND a."entityId" = ANY (v_ticket_ids))
-           OR public.app_erase_may_match(coalesce(a."before"::text, '') || ' ' || coalesce(a."after"::text, ''), v_any_re, v_phones))
+           OR public.app_erase_may_match(coalesce(a."before"::text, '') || ' ' || coalesce(a."after"::text, ''), v_token_likes, v_last4_likes, v_phone_likes))
   ), redacted AS (
     SELECT s."id", public.app_redact_jsonb(s."before", s.pats, v_phones) AS b, public.app_redact_jsonb(s."after", s.pats, v_phones) AS f,
            s."before", s."after"

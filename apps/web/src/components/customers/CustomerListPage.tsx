@@ -45,6 +45,7 @@ import {
   type CustomerFilters,
 } from '@/lib/list-params';
 import { useSession } from '@/lib/shop-context';
+import { useUrlSearch, type HistoryMode } from '@/lib/use-url-search';
 import { useCustomerList, useCustomerTags } from '@/lib/sprint2-queries';
 import { formatShortDate } from '@/lib/timezone';
 
@@ -67,16 +68,22 @@ export function CustomerListPage() {
   const { cursors, page } = paging.key === urlKey ? paging : { cursors: [null], page: 1 };
   const list = useCustomerList(customerFiltersToApi(filters, cursors[page - 1] ?? null));
   const tags = useCustomerTags();
-  const [search, setSearch] = useState(filters.q);
   const searchRef = useRef<HTMLElement>(null);
 
-  const navigate = (next: CustomerFilters) => {
+  // Every filter change is a history entry, so Back undoes it (CU5.5, BUG-03).
+  const navigate = (next: CustomerFilters, mode: HistoryMode = 'push') => {
     const qs = customerFiltersToUrl(next);
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    if (qs === urlKey) return;
+    router[mode](qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
   const update = (patch: Partial<CustomerFilters>) => navigate({ ...filters, ...patch });
+  const search = useUrlSearch(
+    filters.q,
+    (q, mode) => navigate({ ...filters, q }, mode),
+    LIST_SEARCH_DEBOUNCE_MS,
+  );
   const clear = () => {
-    setSearch('');
+    search.reset('');
     navigate({
       ...filters,
       q: '',
@@ -89,13 +96,6 @@ export function CustomerListPage() {
       archived: false,
     });
   };
-
-  useEffect(() => {
-    if (search === filters.q) return;
-    const t = window.setTimeout(() => update({ q: search }), LIST_SEARCH_DEBOUNCE_MS);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -213,8 +213,9 @@ export function CustomerListPage() {
             isLabelHidden
             placeholder="Search name, phone or email"
             startIcon="search"
-            value={search}
-            onChange={setSearch}
+            value={search.value}
+            onChange={search.onChange}
+            onBlur={search.onBlur}
             hasAutoFocus
             width={280}
           />

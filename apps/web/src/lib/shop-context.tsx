@@ -2,6 +2,7 @@
 
 import type { MeResponse, Shop } from '@repairos/contracts';
 import { createContext, useContext, type ReactNode } from 'react';
+import { setRequestShopId } from './api';
 
 export interface SessionContextValue {
   me: MeResponse;
@@ -17,6 +18,8 @@ export function SessionProvider({
   value: SessionContextValue;
   children: ReactNode;
 }) {
+  // Set while rendering (not in an effect) so the children's first queries already carry it.
+  setRequestShopId(value.shop.id);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 

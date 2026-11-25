@@ -1,4 +1,4 @@
-import { ApiError } from '@repairos/contracts';
+import { API_ERROR_MESSAGES, ApiError, SHOP_ID_HEADER } from '@repairos/contracts';
 import type { ZodType, ZodTypeDef } from 'zod';
 
 /** Thrown for every non-2xx response; `body` always has the contract's ApiError shape. */
@@ -50,6 +50,23 @@ export async function toApiError(res: Response): Promise<ApiError> {
   };
 }
 
+// ---------- Active shop header (A13 / BK1) ----------
+
+/** The shop the current page was rendered for; set by the app shell's SessionProvider. */
+let requestShopId: string | null = null;
+
+export function setRequestShopId(shopId: string | null): void {
+  requestShopId = shopId;
+}
+
+/** User-level routes that never carry `X-Shop-Id` (session, auth, shop creation, invites, dev tools). */
+const NOT_SHOP_SCOPED = /^\/api\/(me(\/.*)?|auth\/.*|shops|invites\/.*|dev\/.*)$/;
+
+export function isShopScopedPath(path: string): boolean {
+  const pathname = path.split('?')[0] ?? '';
+  return pathname.startsWith('/api/') && !NOT_SHOP_SCOPED.test(pathname);
+}
+
 export interface ApiFetchOptions extends Omit<RequestInit, 'body'> {
   /** JSON-serialisable request body. */
   json?: unknown;
@@ -64,6 +81,9 @@ export async function apiFetch<T>(
   schema: ZodType<T, ZodTypeDef, unknown>,
   { json, headers, ...init }: ApiFetchOptions = {},
 ): Promise<T> {
+  // Every shop-scoped request says which shop the page was rendered for; the API answers
+  // 409 ACTIVE_SHOP_CHANGED when another tab switched shop (story §8.1).
+  const shopId = isShopScopedPath(path) ? requestShopId : null;
   let res: Response;
   try {
     res = await fetch(path, {
@@ -72,6 +92,7 @@ export async function apiFetch<T>(
       headers: {
         Accept: 'application/json',
         ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(shopId ? { [SHOP_ID_HEADER]: shopId } : {}),
         ...headers,
       },
       body: json !== undefined ? JSON.stringify(json) : undefined,
@@ -85,6 +106,16 @@ export async function apiFetch<T>(
   }
 
   if (!res.ok) throw new ApiRequestError(await toApiError(res));
+
+  // Belt and braces for in-flight GETs: a response for another shop is never handed to the cache.
+  const echoed = res.headers.get(SHOP_ID_HEADER);
+  if (shopId && echoed && echoed !== shopId) {
+    throw new ApiRequestError({
+      statusCode: 409,
+      code: 'ACTIVE_SHOP_CHANGED',
+      message: API_ERROR_MESSAGES.ACTIVE_SHOP_CHANGED ?? 'You switched shop in another tab.',
+    });
+  }
 
   const data: unknown = res.status === 204 ? undefined : await res.json();
   const parsed = schema.safeParse(data);

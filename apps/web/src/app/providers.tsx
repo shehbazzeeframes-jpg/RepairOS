@@ -11,9 +11,13 @@ import { meQueryKey } from '@/lib/me';
 import { watchActiveShop } from '@/lib/shop-cache';
 
 function makeQueryClient() {
-  // A 403 may mean the user's role or membership changed: re-read /api/me so the UI catches up.
+  // A 403 may mean the user's role or membership changed, and ACTIVE_SHOP_CHANGED that another tab
+  // switched shop: re-read /api/me so the UI catches up (the shop-keyed frame then remounts).
   const onError = (error: unknown) => {
-    if (isApiRequestError(error) && error.status === 403) {
+    if (
+      isApiRequestError(error) &&
+      (error.status === 403 || error.body.code === 'ACTIVE_SHOP_CHANGED')
+    ) {
       // cancelRefetch: false joins a /me fetch already in flight instead of cancelling it, so a burst
       // of 403s makes one request (the API's one-shot `accessRemoved` arrives in that one).
       void client.invalidateQueries({ queryKey: meQueryKey }, { cancelRefetch: false });

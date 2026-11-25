@@ -1,8 +1,11 @@
 import { Shop } from '@repairos/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiRequestError, apiFetch, toApiError } from './api';
+import { ApiRequestError, apiFetch, isShopScopedPath, setRequestShopId, toApiError } from './api';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  setRequestShopId(null);
+});
 
 function stubFetch(response: Response) {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
@@ -71,5 +74,45 @@ describe('toApiError', () => {
       code: 'INTERNAL_ERROR',
       message: 'Something went wrong on our side. Please try again.',
     });
+  });
+});
+
+describe('X-Shop-Id (A13)', () => {
+  it('knows which paths are shop-scoped', () => {
+    expect(isShopScopedPath('/api/tickets?view=open')).toBe(true);
+    expect(isShopScopedPath('/api/shop/tax-rates')).toBe(true);
+    expect(isShopScopedPath('/api/me')).toBe(false);
+    expect(isShopScopedPath('/api/me/active-shop')).toBe(false);
+    expect(isShopScopedPath('/api/auth/sign-out')).toBe(false);
+    expect(isShopScopedPath('/api/shops')).toBe(false);
+    expect(isShopScopedPath('/api/invites/abc/accept')).toBe(false);
+  });
+
+  it('sends the rendered shop on shop-scoped requests only', async () => {
+    setRequestShopId('s1');
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(Response.json(shop)));
+    vi.stubGlobal('fetch', fetchMock);
+    await apiFetch('/api/shop', Shop);
+    await apiFetch('/api/me', Shop);
+    const headersOf = (i: number) =>
+      (fetchMock.mock.calls[i] as [string, RequestInit])[1].headers as Record<string, string>;
+    expect(headersOf(0)['X-Shop-Id']).toBe('s1');
+    expect(headersOf(1)['X-Shop-Id']).toBeUndefined();
+  });
+
+  it('discards a response echoed for another shop', async () => {
+    setRequestShopId('s1');
+    stubFetch(Response.json(shop, { headers: { 'X-Shop-Id': 's2' } }));
+    const err = await apiFetch('/api/shop', Shop).catch((e: unknown) => e);
+    expect((err as ApiRequestError).body).toMatchObject({
+      statusCode: 409,
+      code: 'ACTIVE_SHOP_CHANGED',
+    });
+  });
+
+  it('accepts a matching echo', async () => {
+    setRequestShopId('s1');
+    stubFetch(Response.json(shop, { headers: { 'X-Shop-Id': 's1' } }));
+    await expect(apiFetch('/api/shop', Shop)).resolves.toEqual(shop);
   });
 });

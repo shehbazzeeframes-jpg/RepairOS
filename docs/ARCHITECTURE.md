@@ -43,7 +43,7 @@ repair-shop-mvp/
 │  └─ config/         # eslint, tsconfig, prettier presets
 ├─ e2e/               # Playwright tests
 ├─ docs/              # Product, architecture, roadmap, team
-└─ docker-compose.yml # postgres, redis, mailpit
+└─ docker-compose.yml # postgres, redis (dev emails go to .outbox/, viewable at /dev/outbox)
 ```
 
 ## API modules (NestJS) → owner

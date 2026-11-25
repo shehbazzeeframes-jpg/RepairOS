@@ -2,7 +2,7 @@
 
 | Sprint | Goal | Main deliverables | Agents |
 |---|---|---|---|
-| **0: Foundation** (wk 1–2) | Running skeleton | Monorepo, Docker (Postgres, Redis, Mailpit), Next.js + Astryx + brand theme, NestJS, Prisma + tenant extension + RLS, Better Auth, CI, preview deploys, app shell (sidebar, top bar, global search placeholder) | architect, devops, backend, frontend |
+| **0: Foundation** (wk 1–2) | Running skeleton | Monorepo, Docker (Postgres, Redis), Next.js + Astryx + brand theme, NestJS, Prisma + tenant extension + RLS, Better Auth, CI, preview deploys, app shell (sidebar, top bar, global search placeholder) | architect, devops, backend, frontend |
 | **1: Shop & people** (wk 3–4) | A shop can sign up and invite staff | Sign-up/onboarding wizard, shop settings (tax, currency, logo), roles and permissions, clock in/out, audit log | backend, frontend, designer |
 | **2: Customers & tickets I** (wk 5–6) | Check in a device | Customers + devices, ticket create (fast intake), ticket list with filters, ticket detail, statuses, notes, assignment, photos | all |
 | **3: Tickets II & notifications** (wk 7–8) | Customer stays informed | Price list/services, line items, checklist, signature, SMS/email templates and sending (worker), public status page, estimate approval link, print intake receipt and label | backend, integrations, frontend |

@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { type FieldKeyring, FieldKeyError, isFieldKeyUnset, parseFieldKeyring } from '@repairos/db';
 import { type EmailConfig, isDevNodeEnv, loadEmailConfig, requireNodeEnv } from '@repairos/email';
 
 export interface AppConfig {
@@ -36,6 +37,13 @@ export interface AppConfig {
    * NODE_ENV is development or test (see DevOutboxController).
    */
   devOutbox: boolean;
+  /**
+   * Device passcode encryption keys (A15) from FIELD_ENCRYPTION_KEY (one base64 32-byte key, or "v2:<key>,v1:<key>"
+   * for rotation). Production refuses to start when it is missing, short, malformed or a placeholder. In development
+   * and test an unset/placeholder key gives null (setting or revealing a passcode then fails),
+   * but a malformed key still refuses to start.
+   */
+  fieldEncryption: FieldKeyring | null;
 }
 
 export const CONFIG = Symbol('CONFIG');
@@ -78,6 +86,19 @@ export function parseEmailDelivery(raw: string | undefined, nodeEnv: string): 'q
   return nodeEnv === 'test' ? 'sync' : 'queue';
 }
 
+/** FIELD_ENCRYPTION_KEY → keyring; see AppConfig.fieldEncryption. */
+export function loadFieldEncryption(raw: string | undefined, nodeEnv: string): FieldKeyring | null {
+  if (isDevNodeEnv(nodeEnv) && isFieldKeyUnset(raw)) return null;
+  try {
+    return parseFieldKeyring(raw);
+  } catch (err) {
+    if (err instanceof FieldKeyError) {
+      throw new Error(`Refusing to start: ${err.message}. Set FIELD_ENCRYPTION_KEY to \`openssl rand -base64 32\` (see .env.example)`);
+    }
+    throw err;
+  }
+}
+
 const WEAK_SECRETS = new Set(['change-me', 'changeme', 'secret', 'password']);
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -107,5 +128,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     invitePreviewRateLimit: positiveInt(env.INVITE_PREVIEW_RATE_LIMIT, 30),
     passwordResetPerEmailHour: positiveInt(env.PASSWORD_RESET_PER_EMAIL_HOUR, 5),
     devOutbox: env.DEV_OUTBOX?.trim() === '1',
+    fieldEncryption: loadFieldEncryption(env.FIELD_ENCRYPTION_KEY, nodeEnv),
   };
 }

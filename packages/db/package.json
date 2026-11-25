@@ -20,6 +20,8 @@
     "migrate:dev": "dotenv -e ../../.env -- prisma migrate dev && dotenv -e ../../.env -- tsx scripts/sync-app-role.ts",
     "migrate:status": "dotenv -e ../../.env -- prisma migrate status",
     "seed": "dotenv -e ../../.env -- tsx src/seed.ts",
+    "seed:perf": "dotenv -e ../../.env -- tsx scripts/seed-perf.ts",
+    "perf:explain": "dotenv -e ../../.env -- tsx scripts/perf-explain.ts",
     "studio": "dotenv -e ../../.env -- prisma studio"
   },
   "dependencies": {

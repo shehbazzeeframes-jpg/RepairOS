@@ -8,6 +8,8 @@ Prisma schema, migrations, seed and the tenant-scoped client for RepairOS.
 |---|---|
 | `pnpm db:migrate` | `prisma migrate deploy` + `prisma generate` + set the `repairos_app` password from `APP_DATABASE_URL` |
 | `pnpm db:seed` | Idempotent dev seed (see below) |
+| `pnpm db:seed:perf` | Perf dataset (50k customers, 100k tickets) in the dev/scratch DB; NOT part of `db:seed` (see `PERF.md`) |
+| `pnpm --filter @repairos/db perf:explain` | EXPLAIN ANALYZE of the list/search queries on that dataset, as the app role |
 | `pnpm --filter @repairos/db migrate:dev` | Create/apply a new migration while developing (`prisma migrate dev`) |
 | `pnpm --filter @repairos/db generate` | Regenerate the Prisma client (also runs on `pnpm install`) |
 
@@ -28,6 +30,14 @@ The US shop also gets a pending invite for `new.hire@demo.test` (its token is ra
 Seed-owned time entries, invites and audit events are recreated on every run.
 
 The PK shop is a second tenant for isolation testing (its owner is not a member of the US shop).
+
+Sprint 2 (`src/seed-tickets.ts`): both shops get the default ticket statuses and settings, then demo repair data:
+36 customers / 45 devices / 44 tickets (T-1001 to T-1044) in the US shop and 8 / 9 / 9 in the PK shop, across every
+status (incl. overdue, urgent, unassigned, a deactivated assignee, cancelled with a reason, two warranty tickets),
+with issues, checklists, accessories, notes and timeline events. US phones are fictional `555-01xx` numbers, PK
+phones `+92 3xx`. With a valid `FIELD_ENCRYPTION_KEY`, PIN/pattern devices get an encrypted passcode (try "Show
+passcode" on an open ticket). **Re-running replaces all customers, devices and tickets of these two shops** and
+resets their ticket counter to 1001.
 
 ## Two database roles
 
@@ -57,7 +67,7 @@ Every Prisma model is classified in `src/models.ts` (a unit test fails on any un
 
 | Kind | Models | Scoped client behaviour |
 |---|---|---|
-| tenant | every model with a `shopId` field, **derived from the Prisma DMMF** (today: Location, Membership, TaxRate, AuditLog, Invitation, BusinessHours, TimeEntry) | `shopId` injected/enforced |
+| tenant | every model with a `shopId` field, **derived from the Prisma DMMF** (today: Location, Membership, TaxRate, AuditLog, Invitation, BusinessHours, TimeEntry, and the 12 Sprint 2 tables) | `shopId` injected/enforced |
 | shop | `Shop` | scoped by `id` |
 | auth | `User`, `Session`, `Account`, `Verification` | `Session`/`Account`/`Verification` throw; `User` is read-only and limited to members of the current shop |
 | global | none yet (`GLOBAL_MODELS`) | unchanged |
@@ -99,7 +109,7 @@ through the scoped client for that shop.
 
 ### Partial unique indexes (hand-written SQL)
 
-Prisma cannot express these, so they live only in the Sprint 1 migration. Keep them if a later
+Prisma cannot express these, so they live only in the migrations. Keep them if a later
 `prisma migrate dev` proposes dropping them:
 
 | Index | Guarantees |
@@ -107,6 +117,12 @@ Prisma cannot express these, so they live only in the Sprint 1 migration. Keep t
 | `invitations_pending_email_key` | one PENDING invite per `(shopId, lower(email))` |
 | `time_entries_one_open_key` | one open time entry (`clockOutAt IS NULL`) per `(shopId, userId)` |
 | `tax_rates_default_goods_key` / `tax_rates_default_services_key` | one default goods / services rate per shop |
+| `customer_phones_one_primary_key` / `customer_phones_one_whatsapp_key` | one primary and at most one WhatsApp phone per customer |
+| `ticket_statuses_name_key` | status names unique per shop, case-insensitively |
+| `customers_active_name_idx`, `customers_active_last_visit_idx`, `devices_imei_idx`, `devices_serial_idx`, `devices_*_trgm_idx`, `tickets_warranty_idx` | partial query indexes (see `PERF.md`) |
+
+`customers."searchText"` is a `GENERATED ALWAYS` column (Prisma: `@ignore`). `prisma migrate diff` reports it as
+`ALTER COLUMN "searchText" DROP DEFAULT`: that is the generation expression; never apply it.
 
 With no `app.shop_id` set, the app role sees **zero** tenant rows and cannot write any.
 
@@ -151,3 +167,93 @@ wrapped in its own batch transaction on its own connection). Use `db.tx` for tra
 - A batch-wrapped single operation costs one extra round trip (`set_config`). Use `db.tx` for hot paths
   with several queries.
 - Referential-integrity checks bypass RLS by design in Postgres (FKs to `shops` always validate).
+
+## Sprint 2 data (customers, devices, tickets)
+
+Migration `20261201090000_sprint2_customers_tickets`. Read with `docs/stories/sprint2-customers-and-tickets.md` and
+`PERF.md`.
+
+### Rules built into the schema
+
+- **Same-shop references.** Child rows reference parents through composite FKs `(shopId, parentId)` →
+  `(shopId, id)`, so a row can never point at another shop's customer, device, status, ticket or note, even through
+  a bug that bypasses the scoped client (FK checks bypass RLS). A ticket's device must belong to the ticket's customer
+  (`(shopId, customerId, deviceId)` → devices); its assignee and note authors must be members of the shop
+  (`(userId, shopId)` → memberships).
+- **The denormalised status category cannot drift.** `tickets (shopId, statusId, statusCategory)` references
+  `ticket_statuses (shopId, id, category)` `ON UPDATE CASCADE`: changing a status's category re-categorises its
+  tickets in the same statement. `CHECK ((statusCategory = 'CLOSED') = (closedAt IS NOT NULL))` also refuses moving
+  an in-use status to/from CLOSED (the API maps that to `STATUS_IN_USE`).
+- **Leakproof filter columns.** `statusCategory` / `category` are `text` + `CHECK` (values = contracts
+  `STATUS_CATEGORIES`; db exports `TICKET_STATUS_CATEGORIES`), not enums: under RLS an enum `=` cannot be an index
+  condition (`PERF.md`, finding 1).
+- **Append-only.** The app role cannot `UPDATE`/`DELETE` `ticket_events`, nor `UPDATE` `customer_consent_events`
+  (erasure deletes consent history, so `DELETE` stays).
+- **CHECKs**: E.164 phones (`digits` = e164 without `+`), IMEI 15 digits, serial `[A-Z0-9]{4,30}`, passcode columns
+  all-or-nothing and only for PIN/PASSWORD/PATTERN, ticket prefix `[A-Z-]{0,5}`, turnaround 0-30, erased ⇒ archived,
+  ≤ 10 tags, note body 1-2000.
+
+### Database functions
+
+| Function | Security | Use |
+|---|---|---|
+| `app_ensure_ticket_defaults(shopId)` | invoker (RLS applies) | Inserts the 9 default statuses (mirrors contracts `DEFAULT_TICKET_STATUSES`; `apps/api/test/sprint2-db.test.ts` fails if they drift) and the settings row, if missing. Called by the migration backfill, `ShopsService.create` and the seed |
+| `app_search_customers(q, e164, includeArchived, limit, matchDevices)` | DEFINER, scoped to `app_current_shop_id()` | Customer ids + score (name/email words, phone exact/substring, IMEI/serial) |
+| `app_search_devices(q, limit)` | DEFINER, scoped | Device ids + owner + score by IMEI/serial |
+| `app_erase_customer(customerId)` | DEFINER, scoped | Anonymises a customer (A11); see its comment in the migration |
+| `f_unaccent(text)`, `app_like_escape(text)` | immutable helpers | Search normalisation |
+
+Every DEFINER function pins `search_path = pg_catalog, public, pg_temp` (checked by `apps/api/test/schema.test.ts`)
+and returns nothing without a shop context.
+
+### TypeScript helpers (`@repairos/db`)
+
+All take the transaction client of `tenantDb(...).tx(fn)` (type `RawSqlTx`), so they run in the caller's transaction:
+
+| Helper | What |
+|---|---|
+| `nextTicketNumber(tx, shopId)` | Gapless number: `UPDATE shop_ticket_settings SET "nextNumber" = "nextNumber" + 1 ... RETURNING`; rolls back with the transaction |
+| `ensureTicketDefaults(tx, shopId)` | Calls `app_ensure_ticket_defaults` |
+| `customerSearchSql` / `searchCustomers`, `deviceSearchSql` / `searchDevices`, `ticketSearchSql` / `searchTickets` | Parameterised search SQL (`SELECT "id", "score"` subqueries to join into list queries) |
+| `eraseCustomer(tx, customerId)` | Calls `app_erase_customer`; throws `EraseCustomerError` (`CUSTOMER_NOT_FOUND`, `CUSTOMER_ERASED`, `CUSTOMER_HAS_OPEN_TICKETS` + count); returns counts for the `customer.erased` audit event |
+| `parseFieldKeyring`, `encryptField`, `decryptField`, `passcodeAad`, `passcodeColumns`, `passcodeFromRow`, `needsReencryption`, `CLEARED_PASSCODE_COLUMNS` | Passcode encryption (below) |
+| `TicketEventDataByType` | What `ticket_events.data` stores per event type (ids only, resolved into the contract's `TicketTimelineItem` at read time) |
+
+### Passcode encryption (A15)
+
+AES-256-GCM, 96-bit random IV, 128-bit tag, stored as `passcodeCiphertext` / `passcodeIv` / `passcodeTag` (bytea) +
+`passcodeKeyVersion`. Encrypt with AAD `passcodeAad(shopId, deviceId)` so a ciphertext copied to another device or
+shop does not decrypt. Patterns are encrypted as contracts `formatPattern(p)` ("1-5-9-6").
+
+`FIELD_ENCRYPTION_KEY` is one base64 32-byte key (`openssl rand -base64 32`, version 1) or, for rotation,
+`v2:<new>,v1:<old>` (current first): old values keep decrypting, and `needsReencryption()` finds them for a
+re-encryption script (tooling out of scope). The API's `loadConfig` refuses to start in production with a missing,
+placeholder, short or malformed key; in development/test an unset or placeholder key gives
+`config.fieldEncryption = null`. Key bytes are never on the keyring object (so not in logs or config dumps).
+
+### Contract → column map
+
+| Contract (packages/contracts) | Table.column |
+|---|---|
+| `CustomerDetail.kind/firstName/lastName/businessName/businessContactName/displayName/email` | `customers.*` (same names; `email` stored lower-cased) |
+| `addressLine1/addressLine2/city/region/postcode/notes/tags/preferredChannel/serviceOptOut*` | `customers.*` (same names; `preferredChannel` is null only after erasure) |
+| `openTicketCount/lastVisitAt/archivedAt/version/createdBy.userId` | `customers.openTicketCount/lastVisitAt/archivedAt/version/createdByUserId` |
+| `ConsentSummary` (current state) | `customers.marketingSmsAt/marketingEmailAt/marketingWhatsappAt` (granted-at, null = not granted) + latest `customer_consent_events` row per channel for `source`/`recordedBy` |
+| `ConsentEvent.channel/purpose/state/source/note/recordedBy.userId/createdAt` | `customer_consent_events.*` (`recordedByUserId`) |
+| `CustomerPhone.e164/label/isPrimary/position`, `CustomerDetail.whatsappPhoneId` | `customer_phones.*`; `whatsappPhoneId` = id of the phone with `isWhatsapp` |
+| `Device.type/brand/model/colour/imei/serial/notes/lockType/archivedAt/createdAt/updatedAt` | `devices.*` |
+| `Device.passcodeOnFile/passcodeSetAt/passcodeViewCount/passcodeLastViewedAt/passcodeLastViewedBy` | `passcodeCiphertext IS NOT NULL`, `passcodeSetAt`, `passcodeViewCount`, `passcodeLastViewedAt`, `passcodeLastViewedByUserId` |
+| `TicketStatus.name/category/systemRole/colour/position/isHidden/notifyCustomer/requiresNote` | `ticket_statuses.*` |
+| `TicketSettings.defaultTurnaroundDays/numberPrefix/nextNumber/deletePasscodeOnClose` | `shop_ticket_settings.*`; `highestUsedNumber` = `max(tickets.number)` |
+| `TicketDetail.number/priority/statusChangedAt/dueAt/dueHasTime/closedAt/cancelReason/cancelNote/reopenCount/version` | `tickets.*` |
+| `status` / `statusBeforeClose` (StatusRef) | `tickets.statusId` (+ `statusCategory`) / `tickets.statusIdBeforeClose` |
+| `estimate` (Money `{ amountMinor, currency }`) | `tickets.estimateMinor` + `tickets.currency` (shop currency snapshot) |
+| `CreateTicketInput.warrantyOfTicketId`, `TicketDetail.warrantyOf` / `warrantyTickets` | `tickets.warrantyOfTicketId` (and its reverse) |
+| `CancelTicketInput.returnedConfirmed` | `tickets.returnedConfirmed` |
+| `assignee` (UserRef) | `tickets.assigneeUserId` |
+| `issues` (`{ code, label }[]`) | `ticket_issues (code, label, position)` |
+| `checklist` (`Record<ChecklistItemKey, ChecklistResult>`) | `ticket_checklist_items (itemKey, result, position)` |
+| `accessories` (`AccessoryCode[]`), `accessoriesOther` | `ticket_accessories.code`, `tickets.accessoriesOther` |
+| `description`, `conditionNotes`, `createdBy.userId` | `tickets.description/conditionNotes/createdByUserId` |
+| `TicketNote.body/visibility/author.userId/createdAt/editedAt` | `ticket_notes.*` (`authorUserId`) |
+| `TicketTimelineItem.type/actor/createdAt/data` | `ticket_events.type` (same enum values) / `actorUserId` / `createdAt` / `data` per `TicketEventDataByType`; `note_added.data.note` and `status_changed.data.noteId` come from `ticket_events.noteId` |

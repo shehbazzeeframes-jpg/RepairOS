@@ -15,10 +15,17 @@ All scripts read the root `.env`.
 
 ### Seed
 
-| Shop | Country | Owner | Password |
-|---|---|---|---|
-| Demo Phone Repair | US | `owner@demo.test` | `Password123!` |
-| Lahore Mobile Clinic | PK | `owner.pk@demo.test` | `Password123!` |
+Every demo user's password is `Password123!`.
+
+| Shop | Country | Users |
+|---|---|---|
+| Demo Phone Repair | US | `owner@demo.test` (Owner), `manager@demo.test` (Manager), `frontdesk@demo.test` (Front desk), `tech@demo.test` (Technician), `former@demo.test` (Technician, **deactivated**: sees the "access removed" state) |
+| Lahore Mobile Clinic | PK | `owner.pk@demo.test` (Owner) |
+
+The US shop also gets a pending invite for `new.hire@demo.test` (its token is random and unknown: use
+"Resend" or "Copy invite link" to get a working link), about two weeks of time entries (one 14h45m
+"Long shift", one closed on deactivation, one manual correction) and the audit events of those actions.
+Seed-owned time entries, invites and audit events are recreated on every run.
 
 The PK shop is a second tenant for isolation testing (its owner is not a member of the US shop).
 
@@ -50,7 +57,7 @@ Every Prisma model is classified in `src/models.ts` (a unit test fails on any un
 
 | Kind | Models | Scoped client behaviour |
 |---|---|---|
-| tenant | every model with a `shopId` field, **derived from the Prisma DMMF** (today: Location, Membership, TaxRate, AuditLog) | `shopId` injected/enforced |
+| tenant | every model with a `shopId` field, **derived from the Prisma DMMF** (today: Location, Membership, TaxRate, AuditLog, Invitation, BusinessHours, TimeEntry) | `shopId` injected/enforced |
 | shop | `Shop` | scoped by `id` |
 | auth | `User`, `Session`, `Account`, `Verification` | `Session`/`Account`/`Verification` throw; `User` is read-only and limited to members of the current shop |
 | global | none yet (`GLOBAL_MODELS`) | unchanged |
@@ -83,7 +90,23 @@ app_current_user_id() = NULLIF(current_setting('app.user_id', true), '')
 
 Two extra read-only policies let a user see *their own* memberships and the shops they belong to
 (needed for `/api/me` and the shop switcher before a shop is chosen):
-`memberships_self_read` (`"userId" = app_current_user_id()`) and `shops_member_read`.
+`memberships_self_read` (`"userId" = app_current_user_id()`, any status, so `/api/me` can report
+`accessRemoved`) and `shops_member_read` (only through an **ACTIVE** membership, Sprint 1 Risk #1).
+
+`app_invitation_by_token_hash(hash)` is a `SECURITY DEFINER` function that maps an invite token hash to
+`(id, shopId)` only, for the public invite page (no shop context yet). The API then reads the invite
+through the scoped client for that shop.
+
+### Partial unique indexes (hand-written SQL)
+
+Prisma cannot express these, so they live only in the Sprint 1 migration. Keep them if a later
+`prisma migrate dev` proposes dropping them:
+
+| Index | Guarantees |
+|---|---|
+| `invitations_pending_email_key` | one PENDING invite per `(shopId, lower(email))` |
+| `time_entries_one_open_key` | one open time entry (`clockOutAt IS NULL`) per `(shopId, userId)` |
+| `tax_rates_default_goods_key` / `tax_rates_default_services_key` | one default goods / services rate per shop |
 
 With no `app.shop_id` set, the app role sees **zero** tenant rows and cannot write any.
 

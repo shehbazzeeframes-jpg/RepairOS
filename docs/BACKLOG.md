@@ -4,30 +4,23 @@ Known follow-ups that are deliberately not in the current sprint. Each item says
 
 ## Security / platform
 
-### Require email verification before staff invites attach memberships (Sprint 1)
-*Source: Sprint 0 API review, finding 14.*
-Sign-up currently auto-signs-in without verifying the email. That is fine while a user can only
-create their own shop, but once staff invites exist, an invite for `alex@shop.com` must only attach a
-membership to an account that has proven it owns that address. Otherwise anyone who signs up first
-with that email inherits the invite (and the shop's data).
-- Enable Better Auth email verification (Resend adapter from the integrations engineer).
-- Accept an invite only when `user.emailVerified` is true and the emails match; otherwise show
-  "verify your email to join <shop>".
-- Isolation test: an unverified account with the invited email cannot read the shop.
-
-### Cap or rate limit `POST /api/shops` before billing (Sprint 6, before paid launch)
-*Source: Sprint 0 API review, finding 15.*
-Any signed-in user can create unlimited shops, each with default rows (location, tax rates, audit
-log). Before Stripe billing exists this is a free resource sink and a way to spam tenants.
-- Per-user cap (e.g. 3 shops without an active subscription) returning 403 FORBIDDEN with a clear message.
-- Plus a per-user rate limit (e.g. 5 per hour).
-- Billing (Sprint 6) then ties extra shops to subscriptions.
+### Billing ties extra shops to subscriptions (Sprint 6)
+*Source: Sprint 0 API review, finding 15 (cap and rate limit done in Sprint 1).*
+`POST /api/shops` is capped at 3 owned shops (`SHOP_OWNED_LIMIT`) and 5 creations per hour
+(`SHOP_CREATE_PER_HOUR`, in-memory). Sprint 6 billing replaces the flat cap with subscription-based limits.
 
 ### Shared store for rate limits
 *Source: Sprint 0 API.*
 Auth rate limits use express-rate-limit's in-memory store, so each API instance counts separately
 and counts reset on restart. Move to a Redis store (`rate-limit-redis`) when the API runs more than
 one instance (before the beta).
+
+## Done in Sprint 1 (kept for context)
+
+- Finding 14 (email verification before invites attach memberships): resolved by design (story §3). Accepting needs
+  the secret token from the invite email *and* a signed-in account with that email; on accept `emailVerified` is set
+  unless the link was exposed through "Copy invite link" (D7). Tests: `apps/api/test/invites.test.ts`.
+- Finding 15 (cap `POST /api/shops`): 3 owned shops + 5 per hour, tested at the boundary.
 
 ## Done in the review fix (kept for context)
 

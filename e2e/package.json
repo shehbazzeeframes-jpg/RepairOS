@@ -1,0 +1,17 @@
+{
+  "name": "@repairos/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test --trace off --project=chromium",
+    "screenshots": "playwright test --trace off --project=screenshots",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@repairos/contracts": "workspace:*",
+    "@types/node": "^22.20.6",
+    "typescript": "^5.9.3"
+  }
+}

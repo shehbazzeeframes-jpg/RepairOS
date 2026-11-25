@@ -77,5 +77,5 @@ export function auditOf(adminDb: PrismaClient, shopId: string, action?: string) 
 
 /** Moves an invite's resend/link-copy audit history out of the 1/min window. */
 export async function ageInviteSends(adminDb: PrismaClient, inviteId: string, minutes = 2): Promise<void> {
-  await adminDb.$executeRaw`UPDATE audit_logs SET "createdAt" = "createdAt" - make_interval(mins => ${minutes}) WHERE "entityId" = ${inviteId}`;
+  await adminDb.$executeRaw`UPDATE audit_logs SET "createdAt" = "createdAt" - make_interval(mins => ${minutes}::int) WHERE "entityId" = ${inviteId}`;
 }

@@ -29,7 +29,7 @@ describe('route access declarations', () => {
     const undeclared: string[] = [];
     let routes = 0;
     for (const controller of CONTROLLERS) {
-      const proto = controller.prototype as Record<string, unknown>;
+      const proto = controller.prototype as unknown as Record<string, unknown>;
       for (const key of Object.getOwnPropertyNames(proto)) {
         const handler = proto[key];
         if (key === 'constructor' || typeof handler !== 'function') continue;

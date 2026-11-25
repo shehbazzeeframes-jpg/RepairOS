@@ -89,5 +89,13 @@ export function localRange(from: string, to: string, timeZone: string): { start:
 
 /** "Dec 2, 2026, 9:00 AM EST" style, in the shop's locale and zone (emails). */
 export function formatLocalDateTime(instant: Date, timeZone: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone, timeZoneName: 'short' }).format(instant);
+  return new Intl.DateTimeFormat(locale, {
+    timeZone,
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(instant);
 }

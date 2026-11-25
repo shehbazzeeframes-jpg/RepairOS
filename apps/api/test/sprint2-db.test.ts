@@ -324,7 +324,7 @@ describe('erase (A11 + tech lead clarification)', () => {
     });
 
     const counts = await edb().tx((tx) => eraseCustomer(tx, r.customerId));
-    expect(counts).toEqual({ phones: 2, consentEvents: 1, devices: 1, tickets: 1, auditRowsRedacted: 3 });
+    expect(counts).toEqual({ phones: 2, consentEvents: 1, devices: 1, tickets: 1, auditRowsRedacted: 3, textRowsRedacted: expect.any(Number) });
 
     expect(await findAnywhere(values)).toEqual([]);
 

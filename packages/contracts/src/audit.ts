@@ -40,8 +40,8 @@ export const SPRINT1_AUDIT_ACTIONS = [
  * - `customer.erased`: after `{ phones, devices, tickets, consentEvents, notesKept }` (counts only).
  * - `device.passcode_viewed`: after `{ deviceId, ticketId }`.
  * - `device.passcode_changed`: before/after `{ lockType }` (never the value).
- * - `ticket.cancelled`: after `{ statusId, reason, note, returnedConfirmed }`.
- * - `ticket.reopened`: before `{ statusId }`, after `{ statusId, reason }`.
+ * - `ticket.cancelled`: after `{ statusId, reason, returnedConfirmed }` (reason code; never the free-text note, A11-b).
+ * - `ticket.reopened`: before `{ statusId }`, after `{ statusId }` (the free-text reason is only on the timeline, A11-b).
  * - `ticket_status.created`: after = the new status; `ticket_status.updated`: changed fields (name, category, colour,
  *   notifyCustomer, isHidden, requiresNote) before/after; `ticket_status.reordered` (entity Shop): `{ order: id[] }`.
  * - `shop.ticket_settings_updated` (entity Shop): changed settings before/after.

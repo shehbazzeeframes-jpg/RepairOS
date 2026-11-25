@@ -206,7 +206,8 @@ clean-up job can delete old rows later.
 | `app_ensure_ticket_defaults(shopId)` | invoker (RLS applies) | Inserts the 9 default statuses (mirrors contracts `DEFAULT_TICKET_STATUSES`; `apps/api/test/sprint2-db.test.ts` fails if they drift) and the settings row, if missing. Called by the migration backfill, `ShopsService.create` and the seed |
 | `app_search_customers(q, e164, includeArchived, limit, matchDevices)` | DEFINER, scoped to `app_current_shop_id()` | Customer ids + score (name/email words, phone exact/substring, IMEI/serial) |
 | `app_search_devices(q, limit)` | DEFINER, scoped | Device ids + owner + score by IMEI/serial |
-| `app_erase_customer(customerId)` | DEFINER, scoped | Anonymises a customer (A11); see its comment in the migration |
+| `app_erase_customer(customerId)` | DEFINER, scoped | Anonymises a customer (A11) and replaces the customer's names, email, address, postcode, IMEI/serial and phones (any common format) with `[erased]` in ticket text, issue labels, notes, timeline data and audit payloads (A11-b). Matching rules and the over-matching trade-off (whole words, 2+ characters; single names only in the customer's own records) are documented at the top of migration `20261203090000_erase_redacts_free_text` |
+| `app_redact_text`, `app_redact_jsonb`, `app_erase_*_pattern`, `app_erase_may_match`, `app_regex_escape` | invoker, not granted to the app role | Helpers of `app_erase_customer` |
 | `f_unaccent(text)`, `app_like_escape(text)` | immutable helpers | Search normalisation |
 
 Every DEFINER function pins `search_path = pg_catalog, public, pg_temp` (checked by `apps/api/test/schema.test.ts`)

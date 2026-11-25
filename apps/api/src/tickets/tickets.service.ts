@@ -510,7 +510,8 @@ export class TicketsService {
         actorUserId: actor.userId,
         action: 'ticket.cancelled',
         entityId: id,
-        after: { statusId: target.id, reason: input.reason, note, returnedConfirmed },
+        // A11-b: reason code and ids only; the free-text note stays on the ticket and its timeline (redacted on erase).
+        after: { statusId: target.id, reason: input.reason, returnedConfirmed },
       });
       await lockCustomers(tx, [t.customerId]); // lock order: ticket → customer → device
       await deletePasscodeOnClose(tx, { shopId: actor.shopId, ticketId: id, deviceId: t.deviceId, settingOn: shop.deletePasscodeOnClose });
@@ -561,7 +562,8 @@ export class TicketsService {
         action: 'ticket.reopened',
         entityId: id,
         before: { statusId: t.statusId },
-        after: { statusId: target.id, reason: input.reason },
+        // A11-b: no free text in audit payloads; the reopen reason is on the timeline.
+        after: { statusId: target.id },
       });
       await refreshCustomerCounters(tx, [t.customerId]);
       return ticketDetail(tx, id, shop, now);

@@ -5,12 +5,15 @@
  *      former@demo.test (Technician, DEACTIVATED), and a pending invite for new.hire@demo.test (Front desk).
  *    Time entries over the last two weeks (one > 14h "Long shift"), and the audit events these actions write.
  *  - "Lahore Mobile Clinic" (PK), owner owner.pk@demo.test (second tenant for isolation testing)
+ *  - Sprint 2: default ticket statuses + settings for both shops, and demo customers, devices and tickets across
+ *    every status (about three dozen customers for the US shop, eight for the PK shop). See seed-tickets.ts.
  * Every password is Password123!
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { type CountryCode, type Prisma, PrismaClient, type Role } from '@prisma/client';
 import { hashPassword } from 'better-auth/crypto';
 import { DEFAULT_BUSINESS_HOURS, MARKET_DEFAULTS } from '@repairos/contracts';
+import { seedCustomersAndTickets } from './seed-tickets';
 
 const PASSWORD = 'Password123!';
 
@@ -300,7 +303,26 @@ async function main() {
     const passwordHash = await hashPassword(PASSWORD);
     for (const s of SHOPS) {
       const owner = await seedShop(prisma, s, passwordHash);
-      if (s.country === 'US') await seedUsStaff(prisma, s, owner.id, passwordHash);
+      if (s.country === 'US') {
+        await seedUsStaff(prisma, s, owner.id, passwordHash);
+        const idOf = async (email: string) => (await prisma.user.findUniqueOrThrow({ where: { email } })).id;
+        await seedCustomersAndTickets(prisma, {
+          id: s.id,
+          country: s.country,
+          currency: MARKET_DEFAULTS[s.country].currency,
+          staff: [await idOf('frontdesk@demo.test'), await idOf('tech@demo.test'), await idOf('manager@demo.test'), owner.id],
+          formerStaff: await idOf('former@demo.test'),
+          customerCount: 36,
+        });
+      } else {
+        await seedCustomersAndTickets(prisma, {
+          id: s.id,
+          country: s.country,
+          currency: MARKET_DEFAULTS[s.country].currency,
+          staff: [owner.id],
+          customerCount: 8,
+        });
+      }
     }
     console.log(`[seed] done. Password for every demo user: ${PASSWORD}`);
   } finally {

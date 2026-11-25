@@ -1,9 +1,13 @@
 import { PrismaClient } from '@prisma/client';
 
 export * from '@prisma/client';
+export * from './erase';
+export * from './field-crypto';
 export * from './models';
 export * from './scope-args';
+export * from './search';
 export * from './tenant';
+export * from './tickets';
 
 /**
  * Creates a Prisma client. Pass the app-role URL (APP_DATABASE_URL) in the API so RLS applies;

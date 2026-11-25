@@ -370,7 +370,7 @@ describe('security hardening', () => {
     expect(() => loadConfig({ ...base, NODE_ENV: '' })).toThrow(/NODE_ENV/);
     expect(() => loadConfig({ ...base, NODE_ENV: 'production' })).toThrow(/RESEND_API_KEY and EMAIL_FROM/);
     expect(() => loadConfig({ ...base, NODE_ENV: 'staging', RESEND_API_KEY: 're_x' })).toThrow(/EMAIL_FROM/);
-    const prod = loadConfig({ ...base, NODE_ENV: 'production', RESEND_API_KEY: 're_x', EMAIL_FROM: 'a@b.c', DEV_OUTBOX: '1' });
+    const prod = loadConfig({ ...base, NODE_ENV: 'production', RESEND_API_KEY: 're_x', EMAIL_FROM: 'a@b.c', DEV_OUTBOX: '1', FIELD_ENCRYPTION_KEY: process.env.FIELD_ENCRYPTION_KEY ?? 'Y2ktb25seS1rZXktMzItYnl0ZXMtbG9uZy0wMDAwMDA=' });
     expect(prod.email.provider).toBe('resend');
     expect(prod.devOutbox).toBe(true); // set, but the controller still refuses (see invites.test.ts)
     expect(loadConfig({ ...base, NODE_ENV: 'development' }).devOutbox).toBe(false);

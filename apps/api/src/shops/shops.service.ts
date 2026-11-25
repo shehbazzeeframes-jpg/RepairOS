@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { createId } from '@paralleldrive/cuid2';
 import { type CreateShopInput, DEFAULT_BUSINESS_HOURS, MARKET_DEFAULTS, type Shop } from '@repairos/contracts';
-import type { ScopedTx, Shop as ShopRow } from '@repairos/db';
+import { ensureTicketDefaults, type ScopedTx, type Shop as ShopRow } from '@repairos/db';
 import type { AuthContext } from '../auth/auth-context';
 import { writeAudit } from '../common/audit';
 import { apiError, ApiException, validationFailed } from '../common/errors';
@@ -83,7 +83,7 @@ export class ShopsService {
 
   /**
    * Onboarding: creates the shop with market defaults (tax rates with goods/services defaults, D9 business
-   * hours), a "Main" location, the caller's OWNER membership and an audit entry in one transaction, then makes
+   * hours, Sprint 2 ticket statuses and ticket settings), a "Main" location, the caller's OWNER membership and an audit entry in one transaction, then makes
    * it the session's active shop. §7: at most `shopOwnedLimit` owned shops and `shopCreatePerHour` per hour.
    */
   async create(auth: AuthContext, input: CreateShopInput): Promise<Shop> {
@@ -168,6 +168,8 @@ export class ShopsService {
     await tx.businessHours.createMany({
       data: DEFAULT_BUSINESS_HOURS.map((d) => ({ shopId, weekday: d.weekday, isOpen: d.isOpen, opensAt: d.opensAt, closesAt: d.closesAt })),
     });
+    // Sprint 2: default ticket statuses (contracts DEFAULT_TICKET_STATUSES) and ticket settings (next number 1001).
+    await ensureTicketDefaults(tx, shopId);
     await writeAudit(tx, { shopId, actorUserId: userId, action: 'shop.created', entityId: shopId, after: toShopDto(created) });
     return created;
   }

@@ -386,3 +386,18 @@ test('CU-10 devices: IMEI Luhn/length errors, serial normalised, another custome
   expect((devs.items as Json[]).some((d) => d.imei === theImei)).toBe(true);
   expect(await axe(page)).toEqual([]);
 });
+
+test('CU-10b a 14-digit IMEI shows the error when leaving the field (screen spec §5: "once 15+ digits or on blur")', async ({ page }) => {
+  test.fail(true, 'BUG-04: the IMEI error appears only on submit, not on blur');
+  const s = await freshShop('US', 'DevBlur');
+  const c = await customer(s.owner.ctx, { kind: 'PERSON', firstName: 'Blur', phones: [{ number: phone('US') }] });
+  await signInContext(page, s.owner.email);
+  await page.goto(`/customers/${c.id}?tab=devices`);
+  await page.getByRole('button', { name: 'Add device' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add device' });
+  await dialog.getByRole('combobox', { name: 'Model' }).fill('iphone 13');
+  await page.getByRole('option', { name: /^(Apple )?iPhone 13$/ }).first().click();
+  await dialog.getByRole('textbox', { name: 'IMEI' }).fill('35693803564380');
+  await dialog.getByRole('textbox', { name: 'IMEI' }).blur();
+  await expect(dialog.getByText(/IMEI has 15 digits/).first()).toBeVisible({ timeout: 3000 });
+});

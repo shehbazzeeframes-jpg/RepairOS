@@ -234,7 +234,7 @@ Magic-link sign-in, Google sign-in, inviting a phone number / WhatsApp invite, r
 | Field | Rules |
 |---|---|
 | Shop name | Required, trimmed, 2–80 chars |
-| Phone | Optional, ≤32 chars input; must be a valid number per `libphonenumber-js` with the shop country as default region; stored E.164; shown in national format. Examples: US `(212) 555-0142` → `+12125550142`; UK `020 7946 0018` / `07700 900123` → `+44…`; PK mobile `0300 1234567` → `+923001234567`, PK landline `042 35761234` |
+| Phone | Optional, ≤32 chars input; must be a valid number per `libphonenumber-js` with the shop country as default region; stored E.164; shown in national format. Examples: US `(212) 555-0142` → `+12125550142`; UK `020 7946 0018` / `07911 123456` → `+44…`; PK mobile `0300 1234567` → `+923001234567`, PK landline `042 35761234` |
 | Address line 1 | Optional, ≤120 |
 | Address line 2 | Optional, ≤120 |
 | City | Optional, ≤80 (labelled "Town/City" for GB) |

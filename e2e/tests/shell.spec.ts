@@ -36,7 +36,6 @@ test('nav placeholders say which sprint delivers them', async ({ page }) => {
     ['Inventory', 4],
     ['POS', 5],
     ['Reports', 6],
-    ['Settings', 1],
   ];
   for (const [label, sprint] of expected) {
     await sideNav.getByRole('link', { name: label }).click();

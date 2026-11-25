@@ -52,6 +52,7 @@ function SignUp() {
       setApiError(authErrorMessage(error));
       return;
     }
+    queryClient.removeQueries({ queryKey: ['shop'] });
     await queryClient.invalidateQueries({ queryKey: meQueryKey });
     router.replace(invite.returnTo ?? '/onboarding');
   });

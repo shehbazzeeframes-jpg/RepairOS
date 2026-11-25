@@ -27,13 +27,13 @@ import { AuthLayout } from '@/components/AuthLayout';
 import { ErrorState } from '@/components/ErrorState';
 import { FullPageLoader } from '@/components/FullPageLoader';
 import { apiFetch, isApiRequestError } from '@/lib/api';
-import { authClient } from '@/lib/auth-client';
 import { describeTaxDefaults, formatMoney } from '@/lib/format';
 import { COUNTRY_OPTIONS } from '@/lib/markets';
 import { errorMessage } from '@/lib/errors';
 import { meQueryKey } from '@/lib/me';
 import { qk } from '@/lib/queries';
 import { useSessionGate } from '@/lib/session-gate';
+import { useSignOut } from '@/lib/shops';
 
 type FormInput = z.input<typeof CreateShopInput>;
 
@@ -102,6 +102,7 @@ function Onboarding() {
   const searchParams = useSearchParams();
   const newShop = searchParams.get('new') === '1';
   const gate = useSessionGate('onboarding', { newShop });
+  const signOut = useSignOut();
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -145,11 +146,6 @@ function Onboarding() {
     return <ErrorState message={gate.error.message} onRetry={gate.retry} />;
 
   const onSubmit = handleSubmit((values) => createShop.mutate(values));
-  const signOut = async () => {
-    await authClient.signOut();
-    queryClient.clear();
-    router.replace('/sign-in');
-  };
   const errorStatus = (message: string | undefined) =>
     message ? { type: 'error' as const, message } : undefined;
 

@@ -45,6 +45,8 @@ export default defineConfig({
           API_URL: 'http://127.0.0.1:9',
           NEXT_DIST_DIR: '.next-e2e',
           NEXT_TELEMETRY_DISABLED: '1',
+          // The dev outbox page is a 404 in production builds; the e2e build opts in.
+          NEXT_PUBLIC_DEV_OUTBOX: '1',
         },
       },
 });

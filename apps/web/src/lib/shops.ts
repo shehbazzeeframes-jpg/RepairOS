@@ -37,8 +37,10 @@ export function useSignOut(redirectTo: string | null = '/sign-in') {
   const router = useRouter();
   return async () => {
     await authClient.signOut();
-    queryClient.clear();
+    // Update /me in place (observers re-render as signed out), drop shop data, refresh the rest.
     queryClient.setQueryData(meQueryKey, null);
+    queryClient.removeQueries({ queryKey: ['shop'] });
+    void queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== meQueryKey[0] });
     if (redirectTo) router.replace(redirectTo);
   };
 }

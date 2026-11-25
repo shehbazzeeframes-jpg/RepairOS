@@ -44,6 +44,7 @@ export type MeResponse = z.infer<typeof MeResponse>;
 
 /** POST /api/me/active-shop */
 export const SetActiveShopInput = z.object({ shopId: z.string() });
+export type SetActiveShopInput = z.infer<typeof SetActiveShopInput>;
 
 /** Standard error body for every non-2xx response. */
 export const ApiError = z.object({
@@ -56,3 +57,4 @@ export type ApiError = z.infer<typeof ApiError>;
 
 /** GET /api/health */
 export const HealthResponse = z.object({ status: z.literal('ok'), db: z.enum(['up', 'down']), version: z.string() });
+export type HealthResponse = z.infer<typeof HealthResponse>;

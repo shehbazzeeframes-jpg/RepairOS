@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    // The seed reads market defaults straight from the contracts source (tsx honours paths),
+    // so `pnpm db:seed` works without building contracts first.
+    "paths": { "@repairos/contracts": ["../contracts/src/index.ts"] }
+  },
+  "include": ["src", "scripts"]
+}

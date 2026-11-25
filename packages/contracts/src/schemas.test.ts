@@ -13,6 +13,8 @@ import {
   InviteToken,
   MeResponse,
   PasswordSchema,
+  SPRINT1_AUDIT_ACTIONS,
+  SPRINT2_AUDIT_ACTIONS,
   StaffListQuery,
   TimesheetQuery,
   UpdateTimeEntryInput,
@@ -104,10 +106,21 @@ describe('timesheets', () => {
 });
 
 describe('audit', () => {
-  it('has the 22 Sprint 1 actions, each in a group', () => {
-    expect(AUDIT_ACTIONS).toHaveLength(22);
+  it('has the 22 Sprint 1 + 12 Sprint 2 actions, each in a group', () => {
+    expect(SPRINT1_AUDIT_ACTIONS).toHaveLength(22);
+    expect(SPRINT2_AUDIT_ACTIONS).toHaveLength(12);
+    expect(AUDIT_ACTIONS).toHaveLength(34);
+    expect(new Set(AUDIT_ACTIONS).size).toBe(34);
     expect(Object.keys(AUDIT_ACTION_META).sort()).toEqual([...AUDIT_ACTIONS].sort());
     expect(auditActionsInGroup('business_hours')).toEqual(['shop.hours_updated']);
+    expect(auditActionsInGroup('tickets')).toEqual(['ticket.cancelled', 'ticket.reopened']);
+    expect(auditActionsInGroup('ticket_settings')).toEqual([
+      'ticket_status.created',
+      'ticket_status.updated',
+      'ticket_status.reordered',
+      'shop.ticket_settings_updated',
+    ]);
+    expect(auditActionsInGroup('customers')).toHaveLength(6);
   });
   it('query range max one year, limit defaults to 50', () => {
     expect(AuditEventListQuery.parse({ from: '2026-01-01', to: '2026-01-07' }).limit).toBe(50);

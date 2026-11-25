@@ -54,6 +54,10 @@ export const ENTITY_LABELS: Record<AuditEntityType, string> = {
   Invitation: 'Invite',
   Membership: 'Staff',
   TimeEntry: 'Time entry',
+  Customer: 'Customer',
+  Device: 'Device',
+  Ticket: 'Ticket',
+  TicketStatus: 'Ticket status',
 };
 
 export function fieldLabel(key: string): string {

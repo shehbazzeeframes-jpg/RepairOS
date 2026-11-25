@@ -19,14 +19,31 @@ export const PERMISSIONS = [
   'audit.view',
   'billing.manage',
   'shop.delete',
+  /** Settings → Ticket statuses (add, rename, recolour, re-categorise, reorder, hide). */
   'statuses.manage',
+  /** Ticket list, detail, timeline, dashboard counts, global search over tickets. */
   'tickets.view',
+  /** Check in a device (new ticket, warranty ticket). Nested new customer/device also needs `customers.manage`. */
   'tickets.create',
+  /**
+   * Edit ticket details (issues, checklist, accessories, estimate, due, priority), add/edit own notes, change status
+   * WITHIN the open/waiting/ready categories, assign/reassign/take. Changing a ticket's device or customer also
+   * needs `customers.manage`.
+   */
   'tickets.edit',
+  /**
+   * Close lifecycle (Sprint 2 decision A3): move a ticket into a `closed` status — Collect (COLLECTED, from a ready
+   * status only), Cancel (CANCELLED or a custom closed status, with a reason) — and Reopen a closed ticket within
+   * 7 days. No separate collect/reopen keys exist; Technicians do not have this key.
+   */
   'tickets.cancel',
+  /** Reveal a device passcode/pattern from a non-closed ticket (POST, audited, rate limited). */
   'tickets.view_passcode',
+  /** Customer list/detail/devices; global search over customers and devices; duplicate and IMEI look-ups. */
   'customers.view',
+  /** Create/edit/archive/restore customers; create/edit/archive devices incl. setting a passcode; record consent. */
   'customers.manage',
+  /** GDPR export (JSON) and erase/anonymise. */
   'customers.export_delete',
   'pricelist.manage',
   'notifications.manage',
@@ -60,6 +77,20 @@ export const SPRINT1_ENFORCED_PERMISSIONS = [
   'timesheet.edit',
   'timesheet.export',
   'audit.view',
+] as const satisfies readonly Permission[];
+
+/** Keys whose routes/screens are enforced from Sprint 2 (story §0). No grants changed. */
+export const SPRINT2_ENFORCED_PERMISSIONS = [
+  'tickets.view',
+  'tickets.create',
+  'tickets.edit',
+  'tickets.cancel',
+  'tickets.view_passcode',
+  'customers.view',
+  'customers.manage',
+  'customers.export_delete',
+  'statuses.manage',
+  'settings.manage',
 ] as const satisfies readonly Permission[];
 
 const MANAGER: readonly Permission[] = PERMISSIONS.filter((p) => p !== 'billing.manage' && p !== 'shop.delete');

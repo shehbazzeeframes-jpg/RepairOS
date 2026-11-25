@@ -33,10 +33,30 @@ interface SerializedReq {
   [key: string]: unknown;
 }
 
+/**
+ * Body keys whose values are never logged, at any depth (A15: device passcodes travel as `passcode` /
+ * `devicePasscode` objects holding `value` or `pattern`; plus passwords and tokens).
+ */
+const SECRET_BODY_KEYS = new Set(['passcode', 'devicepasscode', 'value', 'pattern', 'password', 'newpassword', 'currentpassword', 'token']);
+
+/** Deep copy of a request body with secret keys replaced by `[REDACTED]`. */
+export function redactBody(body: unknown, depth = 0): unknown {
+  if (depth > 8 || body === null || typeof body !== 'object') return body;
+  if (Array.isArray(body)) return body.map((v) => redactBody(v, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
+    out[k] = SECRET_BODY_KEYS.has(k.toLowerCase()) ? REDACTED : redactBody(v, depth + 1);
+  }
+  return out;
+}
+
 /** pino-http `serializers.req`: receives pino-std-serializers' request object. */
 export function serializeReq(req: SerializedReq): SerializedReq {
   const url = typeof req.url === 'string' ? req.url : '';
   const out: SerializedReq = { ...req, url: redactSecrets(url) };
+  // Request bodies are not logged by pino-std-serializers; if one is ever attached, its secrets are masked.
+  if ('body' in out) out.body = redactBody(out.body);
+  if ('raw' in out) delete out.raw;
   if (isTokenUrl(url)) {
     delete out.query;
     delete out.params;

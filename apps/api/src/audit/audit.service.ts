@@ -8,6 +8,8 @@ import {
   type AuditEventListQuery,
   type AuditEventListResponse,
   type AuditEventSummary,
+  deviceLabel,
+  formatTicketNumber,
 } from '@repairos/contracts';
 import type { AuditLog, Prisma, ScopedTx } from '@repairos/db';
 import type { Actor } from '../auth/auth-context';
@@ -104,17 +106,27 @@ export class AuditService {
     };
     const entryUsers = [...new Set(rows.filter((r) => r.entityType === 'TimeEntry').map(entryUserId).filter((x): x is string => !!x))];
 
-    const [members, rates, invites, users, shop] = await Promise.all([
+    const [members, rates, invites, users, shop, customers, devices, tickets, statuses, settings] = await Promise.all([
       tx.membership.findMany({ where: { id: { in: ids('Membership') } }, select: { id: true, user: { select: { name: true } } } }),
       tx.taxRate.findMany({ where: { id: { in: ids('TaxRate') } }, select: { id: true, name: true } }),
       tx.invitation.findMany({ where: { id: { in: ids('Invitation') } }, select: { id: true, email: true } }),
       entryUsers.length ? tx.user.findMany({ where: { id: { in: entryUsers } }, select: { id: true, name: true } }) : [],
       tx.shop.findFirst({ select: { name: true } }),
+      // Resolved now, so an erased customer reads "Erased customer" in every old row (A12).
+      tx.customer.findMany({ where: { id: { in: ids('Customer') } }, select: { id: true, displayName: true } }),
+      tx.device.findMany({ where: { id: { in: ids('Device') } }, select: { id: true, brand: true, model: true } }),
+      tx.ticket.findMany({ where: { id: { in: ids('Ticket') } }, select: { id: true, number: true } }),
+      tx.ticketStatus.findMany({ where: { id: { in: ids('TicketStatus') } }, select: { id: true, name: true } }),
+      ids('Ticket').length ? tx.shopTicketSettings.findFirst({ select: { numberPrefix: true } }) : null,
     ]);
     const byId = new Map<string, string>([
       ...members.map((m) => [m.id, m.user.name] as const),
       ...rates.map((t) => [t.id, t.name] as const),
       ...invites.map((i) => [i.id, i.email] as const),
+      ...customers.map((c) => [c.id, c.displayName] as const),
+      ...devices.map((d) => [d.id, deviceLabel(d)] as const),
+      ...tickets.map((t) => [t.id, formatTicketNumber(settings?.numberPrefix ?? 'T-', t.number)] as const),
+      ...statuses.map((s) => [s.id, s.name] as const),
     ]);
     const userNames = new Map(users.map((u) => [u.id, u.name]));
 

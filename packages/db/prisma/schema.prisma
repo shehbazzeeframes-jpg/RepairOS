@@ -179,7 +179,7 @@ model TaxRate {
 model AuditLog {
   id          String   @id @default(cuid())
   shopId      String
-  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Restrict) // audit history must outlive a shop delete
   actorUserId String?
   actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
   action      String

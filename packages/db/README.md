@@ -32,9 +32,13 @@ The PK shop is a second tenant for isolation testing (its owner is not a member 
 The migration `*_rls_app_role` creates `repairos_app` (`LOGIN NOSUPERUSER NOBYPASSRLS`, no password),
 grants it `SELECT/INSERT/UPDATE/DELETE` on all tables (plus default privileges for tables created by later
 migrations), revokes access to `_prisma_migrations`, and revokes `UPDATE/DELETE` on `audit_logs`
-(append-only). `scripts/sync-app-role.ts` (part of `db:migrate`) sets the role's password from
+(append-only). `*_audit_log_restrict` revokes `DELETE` on `shops` (deleting a shop would cascade its data
+away) and makes `audit_logs.shopId` `ON DELETE RESTRICT`, so audit history also blocks owner-role deletes. `scripts/sync-app-role.ts` (part of `db:migrate`) sets the role's password from
 `APP_DATABASE_URL`, so the password lives only in `.env`. Roles are cluster-wide, so
 `APP_DATABASE_URL` and `APP_DATABASE_URL_TEST` must use the same password.
+
+The API calls `assertAppRole()` at startup and refuses to start if its role is a superuser, has
+`BYPASSRLS`, or owns the `shops` table. `APP_DATABASE_URL` is required (no fallback to `DATABASE_URL`).
 
 In production, run migrations as the owner role and give the API only `APP_DATABASE_URL`. If the
 migration user cannot `ALTER ROLE`, set the password out of band and leave `APP_DATABASE_URL` unset
@@ -42,8 +46,16 @@ when running `db:migrate` (the sync step is skipped).
 
 ## Tenancy: two layers
 
-Tenant tables: `shops` (keyed by `id`), `locations`, `memberships`, `tax_rates`, `audit_logs` (keyed by `shopId`).
-Auth tables (`users`, `sessions`, `accounts`, `verifications`) are not tenant tables.
+Every Prisma model is classified in `src/models.ts` (a unit test fails on any unclassified model):
+
+| Kind | Models | Scoped client behaviour |
+|---|---|---|
+| tenant | every model with a `shopId` field, **derived from the Prisma DMMF** (today: Location, Membership, TaxRate, AuditLog) | `shopId` injected/enforced |
+| shop | `Shop` | scoped by `id` |
+| auth | `User`, `Session`, `Account`, `Verification` | `Session`/`Account`/`Verification` throw; `User` is read-only and limited to members of the current shop |
+| global | none yet (`GLOBAL_MODELS`) | unchanged |
+
+Auth tables are only touched through the base client, by Better Auth and the API's auth guard.
 
 ### 1. `forShop(shopId)` Prisma extension (application layer)
 
@@ -55,8 +67,9 @@ Auth tables (`users`, `sessions`, `accounts`, `verifications`) are not tenant ta
   relation throws `TenantScopeError`.
 - `update` data that tries to change `shopId` throws `TenantScopeError`.
 
-Add every new tenant model to `TENANT_MODELS` in `src/scope-args.ts` **and** give its table an RLS
-policy in the same migration, plus an isolation test.
+A new model with `shopId` is scoped automatically. Give its table an RLS policy in the same migration
+(the API test `test/schema.test.ts` fails if any table with a `shopId` column lacks RLS or a policy) and
+add an isolation test. A model without `shopId` must be added to `AUTH_MODELS` or `GLOBAL_MODELS` on purpose.
 
 ### 2. Postgres Row-Level Security (backstop)
 
@@ -89,8 +102,9 @@ const db = tenantDb(prisma, { shopId, userId });
 //   [SELECT set_config('app.shop_id', ...), <query>]
 await db.client.taxRate.findMany();
 
-// Several operations in one transaction: set_config runs once, then fn(tx).
-// An AsyncLocalStorage flag stops the extension from wrapping each op again.
+// Several operations, atomically: set_config runs once, then fn(tx).
+// AsyncLocalStorage holds the transaction: inside fn, `db.client` (and any tenantDb for the same shop)
+// is routed to `tx`, so it sees the uncommitted writes and rolls back with them.
 await db.tx(async (tx) => {
   await tx.location.create({ data: { shopId, name: 'Main' } });
   await tx.auditLog.create({ data: { shopId, action: 'x', entityType: 'Shop', entityId: shopId } });
@@ -100,7 +114,11 @@ await db.tx(async (tx) => {
 await userTx(prisma, userId, (tx) => tx.membership.findMany({ where: { userId } }));
 ```
 
-You can also use the raw extension: `prisma.$extends(forShop(shopId, { userId }))`.
+`db.client` exposes model delegates only: `$transaction`, `$queryRaw*`, `$executeRaw*`, `$extends`,
+`$connect`/`$disconnect` throw (`$transaction` on an extended client is not atomic, because every op is
+wrapped in its own batch transaction on its own connection). Use `db.tx` for transactions and raw SQL.
+
+`forShop(shopId)` is still exported as the low-level extension, but application code should use `tenantDb`.
 
 ### Known limits
 

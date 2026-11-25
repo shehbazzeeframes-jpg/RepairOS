@@ -1,14 +1,8 @@
 /**
- * Pure argument rewriting used by the `forShop` extension. Kept separate so it can be unit-tested
- * without a database.
+ * Argument rewriting used by the `forShop` extension. Pure apart from the model classification,
+ * so it can be unit-tested without a database.
  */
-
-/** Models that carry a `shopId` column and an RLS policy. Add every new tenant model here. */
-export const TENANT_MODELS = ['Location', 'Membership', 'TaxRate', 'AuditLog'] as const;
-/** The tenant root: scoped by its own `id`. */
-export const SHOP_MODEL = 'Shop';
-
-export type TenantModel = (typeof TENANT_MODELS)[number];
+import { MODEL_CLASSES, type ModelClasses, SHOP_MODEL, USER_MODEL } from './models';
 
 export class TenantScopeError extends Error {
   constructor(message: string) {
@@ -17,7 +11,7 @@ export class TenantScopeError extends Error {
   }
 }
 
-const WHERE_OPS = new Set([
+const READ_OPS = new Set([
   'findUnique',
   'findUniqueOrThrow',
   'findFirst',
@@ -26,32 +20,29 @@ const WHERE_OPS = new Set([
   'count',
   'aggregate',
   'groupBy',
-  'update',
-  'updateMany',
-  'updateManyAndReturn',
-  'delete',
-  'deleteMany',
-  'upsert',
 ]);
+const WHERE_OPS = new Set([...READ_OPS, 'update', 'updateMany', 'updateManyAndReturn', 'delete', 'deleteMany', 'upsert']);
 const CREATE_OPS = new Set(['create', 'createMany', 'createManyAndReturn']);
 const UPDATE_DATA_OPS = new Set(['update', 'updateMany', 'updateManyAndReturn']);
 
 /** Returns the column that identifies the tenant for this model, or null for non-tenant models. */
-export function tenantKey(model: string | undefined): 'shopId' | 'id' | null {
+export function tenantKey(model: string | undefined, classes: ModelClasses = MODEL_CLASSES): 'shopId' | 'id' | null {
   if (!model) return null;
-  if (model === SHOP_MODEL) return 'id';
-  return (TENANT_MODELS as readonly string[]).includes(model) ? 'shopId' : null;
+  const kind = classes.kinds.get(model);
+  if (kind === 'shop') return 'id';
+  if (kind === 'tenant') return 'shopId';
+  return null;
 }
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-function scopeWhere(where: unknown, key: string, shopId: string): Obj {
+function addAnd(where: unknown, filter: Obj): Obj {
   const w: Obj = isObj(where) ? { ...where } : {};
   const existingAnd = w.AND === undefined ? [] : Array.isArray(w.AND) ? w.AND : [w.AND];
-  // AND keeps any caller filter on the key (e.g. { shopId: otherShop } simply matches nothing)
+  // AND keeps any caller filter (e.g. { shopId: otherShop } simply matches nothing)
   // and is accepted by unique where inputs (extendedWhereUnique).
-  w.AND = [...existingAnd, { [key]: shopId }];
+  w.AND = [...existingAnd, filter];
   return w;
 }
 
@@ -80,28 +71,57 @@ function guardUpdateData(data: unknown, key: string, shopId: string, model: stri
 
 /**
  * Injects the tenant filter / value into Prisma operation args.
- * Non-tenant models are returned unchanged.
+ *  - tenant models: `shopId` in where/create; cross-shop writes throw.
+ *  - Shop: same, keyed by `id`.
+ *  - User: read-only, limited to members of the current shop.
+ *  - Session / Account / Verification and unclassified models: throw.
+ *  - global models: unchanged.
  */
-export function scopeArgs<A>(model: string | undefined, operation: string, args: A, shopId: string): A {
-  const key = tenantKey(model);
-  if (!key || !model) return args;
+export function scopeArgs<A>(
+  model: string | undefined,
+  operation: string,
+  args: A,
+  shopId: string,
+  classes: ModelClasses = MODEL_CLASSES,
+): A {
+  if (!model) return args;
   if (!shopId) throw new TenantScopeError('forShop: shopId is required');
-
+  const kind = classes.kinds.get(model);
   const a: Obj = isObj(args) ? { ...args } : {};
 
-  if (WHERE_OPS.has(operation)) a.where = scopeWhere(a.where, key, shopId);
+  if (kind === 'global') return args;
+
+  if (kind === 'auth') {
+    if (model !== USER_MODEL) {
+      throw new TenantScopeError(`${model} is an auth table and is not available on the scoped client`);
+    }
+    if (!READ_OPS.has(operation)) {
+      throw new TenantScopeError('User is read-only on the scoped client');
+    }
+    a.where = addAnd(a.where, { memberships: { some: { shopId } } });
+    return a as A;
+  }
+
+  if (kind !== 'tenant' && kind !== 'shop') {
+    throw new TenantScopeError(`${model} is not classified as tenant, auth or global (see packages/db/src/models.ts)`);
+  }
+
+  const key = kind === 'shop' ? 'id' : 'shopId';
+  const target = kind === 'shop' ? SHOP_MODEL : model;
+
+  if (WHERE_OPS.has(operation)) a.where = addAnd(a.where, { [key]: shopId });
 
   if (CREATE_OPS.has(operation)) {
     a.data = Array.isArray(a.data)
-      ? a.data.map((d) => scopeCreateData(d, key, shopId, model))
-      : scopeCreateData(a.data, key, shopId, model);
+      ? a.data.map((d) => scopeCreateData(d, key, shopId, target))
+      : scopeCreateData(a.data, key, shopId, target);
   }
 
-  if (UPDATE_DATA_OPS.has(operation)) guardUpdateData(a.data, key, shopId, model);
+  if (UPDATE_DATA_OPS.has(operation)) guardUpdateData(a.data, key, shopId, target);
 
   if (operation === 'upsert') {
-    a.create = scopeCreateData(a.create, key, shopId, model);
-    guardUpdateData(a.update, key, shopId, model);
+    a.create = scopeCreateData(a.create, key, shopId, target);
+    guardUpdateData(a.update, key, shopId, target);
   }
 
   return a as A;

@@ -160,7 +160,7 @@ export const API_ERROR_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
   TICKET_CLOSED: 'This ticket is closed. Reopen it to make changes.',
   ASSIGNEE_NOT_ACTIVE: "{name} isn't an active member of this shop.",
   NOTE_EDIT_WINDOW_PASSED: 'Notes can be edited only within 10 minutes of posting.',
-  WARRANTY_NOT_ALLOWED: 'A warranty ticket can be created only for a collected ticket.',
+  WARRANTY_NOT_ALLOWED: 'A warranty ticket can be created only for a collected ticket of the same device.',
 };
 
 /** Message for 409 TRANSITION_NOT_ALLOWED when trying to collect an open/waiting ticket (§5.4). */

@@ -193,10 +193,11 @@ export class TicketsService {
       if (input.warrantyOfTicketId) {
         const original = await tx.ticket.findFirst({
           where: { id: input.warrantyOfTicketId },
-          select: { id: true, warrantyOfTicketId: true, status: { select: { systemRole: true } } },
+          select: { id: true, deviceId: true, warrantyOfTicketId: true, status: { select: { systemRole: true } } },
         });
         if (!original) throw notFound();
-        if (original.status.systemRole !== 'COLLECTED') throw apiError('WARRANTY_NOT_ALLOWED');
+        // M2 (tech lead): a Collected ticket for the SAME device.
+        if (original.status.systemRole !== 'COLLECTED' || original.deviceId !== deviceId) throw apiError('WARRANTY_NOT_ALLOWED');
         warrantyRoot = original.warrantyOfTicketId ?? original.id;
       }
 
@@ -281,6 +282,9 @@ export class TicketsService {
       let deviceType = device.type as DeviceType;
       let customerId = t.customerId;
       if (parsed.customerId && parsed.customerId !== t.customerId) {
+        // L1: lock both customers (sorted) before reading the new one, so a concurrent erase either commits first
+        // (and is seen below) or waits for this move (and then counts the ticket as open).
+        await lockCustomers(tx, [t.customerId, parsed.customerId]);
         const c = await tx.customer.findFirst({ where: { id: parsed.customerId }, select: { erasedAt: true, archivedAt: true } });
         if (!c) throw notFound();
         if (c.erasedAt) throw apiError('CUSTOMER_ERASED');

@@ -66,6 +66,7 @@ import {
   createTicketSchema,
   deviceLabel,
   dueInputProblem,
+  formatPhone,
   isValidImei,
   maskIdentifier,
   normalizeImei,
@@ -943,7 +944,7 @@ function CheckInForm({
                     item={item}
                     description={[
                       c.archivedAt ? 'Archived · Restore and use' : null,
-                      c.primaryPhone ?? c.email ?? null,
+                      c.primaryPhone ? formatPhone(c.primaryPhone, shop.country) : (c.email ?? null),
                       c.openTicketCount ? `${c.openTicketCount} open` : null,
                     ]
                       .filter(Boolean)

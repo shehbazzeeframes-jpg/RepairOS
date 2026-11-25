@@ -82,7 +82,7 @@ export function TicketTable({
     {
       key: 'number',
       header: 'Ticket',
-      width: pixel(isNarrow ? 104 : 112),
+      width: pixel(isNarrow ? 92 : 112),
       renderCell: (t: TicketListItem) => (
         <VStack gap={1}>
           <Link href={`/tickets/${t.id}`} weight="semibold">
@@ -96,7 +96,7 @@ export function TicketTable({
     {
       key: 'customer',
       header: 'Customer',
-      width: proportional(1, { minWidth: 140 }),
+      width: proportional(1, { minWidth: 120 }),
       renderCell: (t: TicketListItem) => (
         <VStack gap={0.5}>
           <Text maxLines={1} weight="medium">
@@ -111,13 +111,13 @@ export function TicketTable({
     {
       key: 'device',
       header: 'Device',
-      width: proportional(1, { minWidth: 120 }),
+      width: proportional(1, { minWidth: 100 }),
       renderCell: (t: TicketListItem) => <Text maxLines={2}>{deviceLabel(t.device)}</Text>,
     },
     {
       key: 'issues',
       header: 'Issues',
-      width: proportional(1, { minWidth: 120 }),
+      width: proportional(1, { minWidth: 96 }),
       renderCell: (t: TicketListItem) => (
         <Text maxLines={2} color={t.issues.length ? 'primary' : 'secondary'}>
           {issuesText(t)}
@@ -127,19 +127,19 @@ export function TicketTable({
     {
       key: 'status',
       header: 'Status',
-      width: proportional(1, { minWidth: 130 }),
+      width: proportional(1, { minWidth: 140 }),
       renderCell: (t: TicketListItem) => <StatusBadge {...t.status} />,
     },
     {
       key: 'assignee',
       header: 'Assignee',
-      width: proportional(1, { minWidth: 120 }),
+      width: proportional(1, { minWidth: 100 }),
       renderCell: (t: TicketListItem) => <AssigneeText assignee={t.assignee} />,
     },
     {
       key: 'due',
       header: 'Due',
-      width: proportional(1, { minWidth: 112 }),
+      width: proportional(1, { minWidth: 104 }),
       renderCell: (t: TicketListItem) => (
         <DueChip
           dueAt={t.dueAt}
@@ -186,7 +186,7 @@ export function TicketTable({
     cols.push({
       key: 'actions',
       header: <VisuallyHidden>Actions</VisuallyHidden>,
-      width: pixel(56),
+      width: pixel(48),
       renderCell: (t: TicketListItem) => {
         const items = actions(t);
         return items.length ? (

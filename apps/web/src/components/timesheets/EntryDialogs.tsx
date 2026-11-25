@@ -23,7 +23,13 @@ import { z, type ZodError } from 'zod';
 import { errorStatus } from '@/components/form';
 import { apiFetch, isApiRequestError } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
-import { formatDateTime, hourFormatFor, utcToZonedLocal, zonedLocalToUtc, type ShopClock } from '@/lib/timezone';
+import {
+  formatDateTime,
+  hourFormatFor,
+  utcToZonedLocal,
+  zonedLocalToUtc,
+  type ShopClock,
+} from '@/lib/timezone';
 
 type Field = 'userId' | 'clockInAt' | 'clockOutAt' | 'reason';
 type FieldErrors = Partial<Record<Field, string>>;
@@ -65,7 +71,9 @@ export function EntryDialog({
 }) {
   const showToast = useToast();
   const [userId, setUserId] = useState(entry?.userId ?? '');
-  const [clockIn, setClockIn] = useState(entry ? utcToZonedLocal(entry.clockInAt, shop.timezone) : '');
+  const [clockIn, setClockIn] = useState(
+    entry ? utcToZonedLocal(entry.clockInAt, shop.timezone) : '',
+  );
   const [clockOut, setClockOut] = useState(
     entry?.clockOutAt ? utcToZonedLocal(entry.clockOutAt, shop.timezone) : '',
   );
@@ -87,7 +95,8 @@ export function EntryDialog({
     },
   });
 
-  const toUtc = (local: string) => (local ? zonedLocalToUtc(local.slice(0, 16), shop.timezone) : undefined);
+  const toUtc = (local: string) =>
+    local ? zonedLocalToUtc(local.slice(0, 16), shop.timezone) : undefined;
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -124,7 +133,9 @@ export function EntryDialog({
       />
       <form onSubmit={onSubmit} noValidate aria-label={title}>
         <VStack gap={5} padding={6}>
-          {bannerError ? <Banner status="error" title="Could not save" description={bannerError} /> : null}
+          {bannerError ? (
+            <Banner status="error" title="Could not save" description={bannerError} />
+          ) : null}
           <FormLayout defaultOptionality="required">
             {entry ? null : (
               <Selector
@@ -229,11 +240,15 @@ export function DeleteEntryDialog({
       >
         <VStack gap={5} padding={6}>
           <Text>
-            {staffName}, clocked in {formatDateTime(entry.clockInAt, shop)}. The entry is removed from
-            the timesheet; the audit log keeps a copy.
+            {staffName}, clocked in {formatDateTime(entry.clockInAt, shop)}. The entry is removed
+            from the timesheet; the audit log keeps a copy.
           </Text>
           {remove.isError ? (
-            <Banner status="error" title="Could not delete" description={errorMessage(remove.error)} />
+            <Banner
+              status="error"
+              title="Could not delete"
+              description={errorMessage(remove.error)}
+            />
           ) : null}
           <TextArea
             label="Reason"

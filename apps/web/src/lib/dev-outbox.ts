@@ -8,8 +8,16 @@ export const OutboxEmail = z.object({
   id: z.string(),
   to: z.union([z.string(), z.array(z.string())]),
   subject: z.string(),
-  text: z.string().nullable().optional().transform((v) => v ?? ''),
-  html: z.string().nullable().optional().transform((v) => v ?? ''),
+  text: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((v) => v ?? ''),
+  html: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((v) => v ?? ''),
   createdAt: z.string(),
 });
 export type OutboxEmail = z.infer<typeof OutboxEmail>;
@@ -17,7 +25,10 @@ export type OutboxEmail = z.infer<typeof OutboxEmail>;
 export const OutboxList = z.object({ items: z.array(OutboxEmail) });
 
 /** The page exists in dev builds, and in the e2e build that sets NEXT_PUBLIC_DEV_OUTBOX=1. */
-export function isDevOutboxEnabled(env: { NODE_ENV?: string; NEXT_PUBLIC_DEV_OUTBOX?: string }): boolean {
+export function isDevOutboxEnabled(env: {
+  NODE_ENV?: string;
+  NEXT_PUBLIC_DEV_OUTBOX?: string;
+}): boolean {
   return env.NODE_ENV !== 'production' || env.NEXT_PUBLIC_DEV_OUTBOX === '1';
 }
 

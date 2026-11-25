@@ -40,9 +40,9 @@ describe('auditDiff', () => {
   });
 
   it('formats a field added or cleared as an em dash', () => {
-    expect(auditDiff({ before: { phone: null }, after: { phone: '+442071234567' } }, shop)).toEqual([
-      { key: 'phone', label: 'Phone', before: '—', after: '+442071234567' },
-    ]);
+    expect(auditDiff({ before: { phone: null }, after: { phone: '+442071234567' } }, shop)).toEqual(
+      [{ key: 'phone', label: 'Phone', before: '—', after: '+442071234567' }],
+    );
   });
 
   it('summarises a business-hours week Monday first', () => {

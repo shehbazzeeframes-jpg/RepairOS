@@ -74,7 +74,9 @@ export default function ForgotPasswordPage() {
     >
       <form onSubmit={onSubmit} noValidate aria-label="Reset your password">
         <FormLayout defaultOptionality="required">
-          {error ? <Banner status="error" title="Could not send the link" description={error} /> : null}
+          {error ? (
+            <Banner status="error" title="Could not send the link" description={error} />
+          ) : null}
           <FormTextInput
             control={control}
             name="email"

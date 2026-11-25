@@ -40,5 +40,8 @@ export function resetPassword(input: ResetPasswordInput): Promise<AuthCallResult
 
 /** Better Auth reports an expired/used/unknown token as INVALID_TOKEN (400). */
 export function isInvalidToken(result: AuthCallResult): boolean {
-  return result.code === 'INVALID_TOKEN' || (result.status === 400 && result.code !== 'VALIDATION_FAILED');
+  return (
+    result.code === 'INVALID_TOKEN' ||
+    (result.status === 400 && result.code !== 'VALIDATION_FAILED')
+  );
 }

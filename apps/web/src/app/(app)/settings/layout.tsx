@@ -42,7 +42,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
     <Layout
       height="auto"
       start={
-        <LayoutPanel width={220} hasDivider label="Settings" role="navigation" isScrollable={false}>
+        <LayoutPanel width={220} label="Settings" role="navigation" isScrollable={false}>
           <VStack gap={2} paddingInlineEnd={4}>
             <Text type="supporting" weight="semibold" color="secondary">
               Settings

@@ -25,25 +25,36 @@ test.describe('settings navigation and permissions', () => {
     for (const label of ['General', 'Tax', 'Business hours', 'Staff', 'Timesheets', 'Audit log']) {
       await expect(nav.getByRole('link', { name: label })).toBeVisible();
     }
-    await expect(nav.getByRole('link', { name: 'General' })).toHaveAttribute('aria-current', 'page');
+    await expect(nav.getByRole('link', { name: 'General' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   });
 
-  test('front desk has no Settings nav and sees "no access" on a direct visit', async ({ page }) => {
+  test('front desk has no Settings nav and sees "no access" on a direct visit', async ({
+    page,
+  }) => {
     const api = await mockApi(page, { me: meAs('FRONT_DESK') });
     await page.goto('/');
-    await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Settings' })).toHaveCount(0);
+    await expect(
+      page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Settings' }),
+    ).toHaveCount(0);
     await page.getByRole('button', { name: 'Account: Alex Morgan' }).click();
     await expect(page.getByRole('menuitem', { name: 'Settings' })).toHaveCount(0);
     await page.keyboard.press('Escape');
 
     await page.goto('/settings/staff');
-    await expect(page.getByRole('heading', { name: "You don't have access to this page" })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: "You don't have access to this page" }),
+    ).toBeVisible();
     expect(api.calls.some((c) => c.path === '/api/staff')).toBe(false);
   });
 });
 
 test.describe('general', () => {
-  test('shows country and currency locked with the reason, and saves only changed fields', async ({ page }) => {
+  test('shows country and currency locked with the reason, and saves only changed fields', async ({
+    page,
+  }) => {
     let saved: unknown;
     await mockApi(page, {
       me: ME_WITH_SHOP,
@@ -53,14 +64,22 @@ test.describe('general', () => {
           saved = request.postDataJSON();
           await route.fulfill({
             status: 200,
-            json: ShopProfile.parse({ ...SHOP_SETTINGS.shop, name: 'Fix It Phones Soho', updatedAt: '2026-11-25T12:00:00.000Z' }),
+            json: ShopProfile.parse({
+              ...SHOP_SETTINGS.shop,
+              name: 'Fix It Phones Soho',
+              updatedAt: '2026-11-25T12:00:00.000Z',
+            }),
           });
         },
       },
     });
     await page.goto('/settings/general');
     await expect(page.getByLabel('Shop name')).toHaveValue('Fix It Phones');
-    await expect(page.getByText("Country and currency can't be changed after the shop is created.", { exact: false })).toBeVisible();
+    await expect(
+      page.getByText("Country and currency can't be changed after the shop is created.", {
+        exact: false,
+      }),
+    ).toBeVisible();
     await expect(page.getByText('United Kingdom', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Postcode')).toHaveValue('SW1A 1AA');
     await expect(page.getByLabel('Town/City')).toHaveValue('London');
@@ -68,7 +87,9 @@ test.describe('general', () => {
 
     await page.getByLabel('Postcode').fill('nope');
     await page.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.getByRole('form', { name: 'Shop details' }).getByText('Enter a valid postcode')).toBeVisible();
+    await expect(
+      page.getByRole('form', { name: 'Shop details' }).getByText('Enter a valid postcode'),
+    ).toBeVisible();
 
     await page.getByLabel('Postcode').fill('sw1a1aa');
     await page.getByLabel('Shop name').fill('Fix It Phones Soho');
@@ -79,7 +100,9 @@ test.describe('general', () => {
 });
 
 test.describe('tax', () => {
-  test('adds a rate with three decimals and explains that history never changes', async ({ page }) => {
+  test('adds a rate with three decimals and explains that history never changes', async ({
+    page,
+  }) => {
     let created: unknown;
     await mockApi(page, {
       me: ME_WITH_SHOP,
@@ -104,7 +127,9 @@ test.describe('tax', () => {
     await dialog.getByLabel('Name').fill('City tax');
     await dialog.getByLabel('Rate (%)').fill('8.8755');
     await dialog.getByRole('button', { name: 'Add rate' }).click();
-    await expect(dialog.locator('form').getByText('Enter a rate from 0 to 100 with up to 3 decimals')).toBeVisible();
+    await expect(
+      dialog.locator('form').getByText('Enter a rate from 0 to 100 with up to 3 decimals'),
+    ).toBeVisible();
     await dialog.getByLabel('Rate (%)').fill('8.875%');
     await dialog.getByRole('button', { name: 'Add rate' }).click();
     await expect(toast(page, 'City tax added')).toBeVisible();
@@ -117,7 +142,10 @@ test.describe('tax', () => {
       handlers: {
         ...settingsHandlers,
         'POST /api/shop/tax-rates/:id/archive': (route) =>
-          route.fulfill({ status: 409, json: apiError(409, 'TAX_RATE_IS_DEFAULT', 'Choose another default first') }),
+          route.fulfill({
+            status: 409,
+            json: apiError(409, 'TAX_RATE_IS_DEFAULT', 'Choose another default first'),
+          }),
       },
     });
     await page.goto('/settings/tax');
@@ -135,7 +163,10 @@ test.describe('tax', () => {
         ...settingsHandlers,
         'PATCH /api/shop/tax-settings': async (route, request) => {
           body = request.postDataJSON();
-          await route.fulfill({ status: 200, json: TaxSettings.parse({ pricesIncludeTax: false }) });
+          await route.fulfill({
+            status: 200,
+            json: TaxSettings.parse({ pricesIncludeTax: false }),
+          });
         },
       },
     });
@@ -158,7 +189,10 @@ test.describe('business hours', () => {
         ...settingsHandlers,
         'PUT /api/shop/hours': async (route, request) => {
           saved = UpdateBusinessHoursInput.parse(request.postDataJSON());
-          await route.fulfill({ status: 200, json: BusinessHoursResponse.parse({ days: saved.days }) });
+          await route.fulfill({
+            status: 200,
+            json: BusinessHoursResponse.parse({ days: saved.days }),
+          });
         },
       },
     });
@@ -173,7 +207,11 @@ test.describe('business hours', () => {
     await page.getByRole('button', { name: 'Copy Monday to all weekdays' }).click();
     await page.getByRole('button', { name: 'Save hours' }).click();
     await expect(toast(page, 'Business hours saved')).toBeVisible();
-    expect(saved?.days.find((d) => d.weekday === 0)).toMatchObject({ isOpen: true, opensAt: '10:00', closesAt: '19:00' });
+    expect(saved?.days.find((d) => d.weekday === 0)).toMatchObject({
+      isOpen: true,
+      opensAt: '10:00',
+      closesAt: '19:00',
+    });
     for (const weekday of [1, 2, 3, 4, 5]) {
       expect(saved?.days.find((d) => d.weekday === weekday)?.isOpen).toBe(false);
     }

@@ -22,7 +22,7 @@ Astryx v0.7.17 only, tokens only. Components were picked with `pnpm exec astryx 
 Sign-in/sign-up with `?invite=<token>` send a signed-in user back to `/invite/<token>` instead.
 
 ## 1. Settings (`/settings/*`)
-**Frame:** inside the Sprint 0 `AppShell`; `Layout` with a `LayoutPanel` (start, 220 wide, `label="Settings"`, divider) holding a `List` of `ListItem` links (`aria-current="page"` on the current one), and the page in the content slot. Each page: `Heading` h1 + one-line `Text` intro, then `Section`s. Forms sit in a 640 column; tables take the content width. At ≤ 900px the panel becomes a `TabList` of links above the page.
+**Frame:** inside the Sprint 0 `AppShell`; `Layout` with a `LayoutPanel` (start, 220 wide, `label="Settings"`, divider) holding a `List` of `ListItem` links (`aria-current="page"` on the current one; no divider, the selected row carries the state), and the page in the content slot. Each page: `Heading` h1 + one-line `Text` intro, then `Section`s. Forms sit in a 640 column; tables take the content width. At ≤ 900px the panel becomes a `TabList` of links above the page.
 
 | Nav item | Path | Shown with |
 |---|---|---|
@@ -52,7 +52,7 @@ Sign-in/sign-up with `?invite=<token>` send a signed-in user back to `/invite/<t
 - Empty (only archived hidden): "No active tax rates" (can't really happen, `LAST_TAX_RATE` prevents it).
 
 ### 1.3 Business hours
-- One row per weekday in `weekdayDisplayOrder(country)`: day name (`Text` semibold, fixed width), `Switch` "Open" (label hidden, `aria-label` "{Day} open"), and when open two `TimeInput`s "Opens" / "Closes" (`increment={15}`, 12h for en-US, 24h for en-GB). Closed rows show "Closed" instead of the pickers.
+- One row per weekday in `weekdayDisplayOrder(country)`: `Switch` (label hidden, "{Day} open"), day name (`Text` semibold), and when open two `TimeInput`s "Opens" "to" "Closes" (`increment={15}`, 12h for en-US, 24h for en-GB). Closed rows show "Closed" instead of the pickers.
 - "Copy Monday to all weekdays" `Button` (ghost) above the rows.
 - Validate with `BusinessHoursWeek`; errors attach to the field ("Closing time must be after opening time"). Save → `PUT /api/shop/hours`, toast "Business hours saved".
 
@@ -65,7 +65,7 @@ Sign-in/sign-up with `?invite=<token>` send a signed-in user back to `/invite/<t
   - Member, active: Change role…, Deactivate… (destructive).
   - Member, deactivated: Reactivate.
   - Invite: Resend invite, Copy invite link, Revoke invite… (destructive; "Remove invite…" when expired).
-- Invite row with `inviteEmailStatus = FAILED`: error `Badge` "Email failed" + inline `Link` "Resend".
+- Invite row with `inviteEmailStatus = FAILED`: error `Badge` "Email failed" + inline `Link` "Resend invite" under the expiry date.
 - **Invite dialog:** Email (`EmailAddress`), Role `Selector` limited to `manageableRoles(myRole)` with one-line descriptions (Owner "Everything, including billing", Manager "Runs the shop: settings, staff, reports", Front desk "Check-in, customers and the till", Technician "Works on repairs and parts"). Errors `ALREADY_MEMBER` / `INVITE_PENDING` / `MEMBER_DEACTIVATED` on the Email field; `SEAT_LIMIT_REACHED` as a banner. Success toast "Invite sent to {email}".
 - **Copy invite link:** calls `POST …/link`, writes the URL to the clipboard and opens a `Dialog`: "Invite link copied", the link in a read-only `TextInput` with a Copy button, and "Paste it into WhatsApp or a text message. This new link replaced the emailed one and expires on {date}. Anyone with the link and access to {email} can join."
 - **Change role dialog:** `Selector` of `manageableRoles` (current role preselected); `LAST_OWNER` / `CANNOT_CHANGE_SELF` show in the dialog banner.

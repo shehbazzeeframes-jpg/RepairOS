@@ -55,8 +55,16 @@ export function InviteDialog({
 }) {
   const showToast = useToast();
   const roles = manageableRoles(myRole);
-  const { control, handleSubmit, setError, getValues } = useForm<InviteInput, unknown, CreateInviteInput>({
-    resolver: zodResolver(CreateInviteInput) as unknown as Resolver<InviteInput, unknown, CreateInviteInput>,
+  const { control, handleSubmit, setError, getValues } = useForm<
+    InviteInput,
+    unknown,
+    CreateInviteInput
+  >({
+    resolver: zodResolver(CreateInviteInput) as unknown as Resolver<
+      InviteInput,
+      unknown,
+      CreateInviteInput
+    >,
     defaultValues: { email: '', role: roles.includes('TECHNICIAN') ? 'TECHNICIAN' : roles[0] },
   });
 
@@ -76,7 +84,8 @@ export function InviteDialog({
   });
 
   const code = errorCode(invite.error);
-  const fieldError = code === 'ALREADY_MEMBER' || code === 'INVITE_PENDING' || code === 'MEMBER_DEACTIVATED';
+  const fieldError =
+    code === 'ALREADY_MEMBER' || code === 'INVITE_PENDING' || code === 'MEMBER_DEACTIVATED';
 
   return (
     <Dialog isOpen onOpenChange={(open) => !open && onClose()} purpose="form" width={480}>
@@ -180,7 +189,11 @@ export function ChangeRoleDialog({
       >
         <VStack gap={5} padding={6}>
           {change.isError ? (
-            <Banner status="error" title="Could not change the role" description={errorMessage(change.error)} />
+            <Banner
+              status="error"
+              title="Could not change the role"
+              description={errorMessage(change.error)}
+            />
           ) : null}
           <SelectorRole value={role} onChange={setRole} roles={roles} />
           <HStack gap={2} hAlign="end">

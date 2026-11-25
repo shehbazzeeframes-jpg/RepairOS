@@ -2,12 +2,7 @@
 
 import { LinkProvider } from '@astryxdesign/core/Link';
 import { Theme } from '@astryxdesign/core/theme';
-import {
-  MutationCache,
-  QueryCache,
-  QueryClient,
-  QueryClientProvider,
-} from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import NextLink from 'next/link';
 import { useState, type ReactNode } from 'react';
 import { defaultThemeSlug, themes } from '../../astryx-themes';

@@ -43,7 +43,8 @@ import {
 
 /** Action filter values: "all", "group:<group>" or "action:<action>". */
 function actionFilterParams(value: string): Pick<AuditParams, 'action' | 'actionGroup'> {
-  if (value.startsWith('group:')) return { actionGroup: value.slice(6) as AuditParams['actionGroup'] };
+  if (value.startsWith('group:'))
+    return { actionGroup: value.slice(6) as AuditParams['actionGroup'] };
   if (value.startsWith('action:')) return { action: value.slice(7) as AuditAction };
   return {};
 }
@@ -74,7 +75,11 @@ function DiffTable({ rows }: { rows: DiffRow[] }) {
       density="compact"
       verticalAlign="top"
       columns={[
-        { key: 'label', header: 'Field', renderCell: (r) => <Text weight="medium">{r.label}</Text> },
+        {
+          key: 'label',
+          header: 'Field',
+          renderCell: (r) => <Text weight="medium">{r.label}</Text>,
+        },
         ...(hasBefore
           ? [
               {
@@ -85,7 +90,13 @@ function DiffTable({ rows }: { rows: DiffRow[] }) {
             ]
           : []),
         ...(hasAfter
-          ? [{ key: 'after', header: 'After', renderCell: (r: DiffRow) => <Text>{r.after ?? '—'}</Text> }]
+          ? [
+              {
+                key: 'after',
+                header: 'After',
+                renderCell: (r: DiffRow) => <Text>{r.after ?? '—'}</Text>,
+              },
+            ]
           : []),
       ]}
     />
@@ -120,7 +131,9 @@ function EventDrawer({
             <MetadataList label={{ position: 'start', width: 96 }}>
               <MetadataListItem label="What">{auditEntityText(summary)}</MetadataListItem>
               <MetadataListItem label="Who">{summary.actor?.name ?? 'System'}</MetadataListItem>
-              <MetadataListItem label="When">{formatDateTime(summary.createdAt, shop)}</MetadataListItem>
+              <MetadataListItem label="When">
+                {formatDateTime(summary.createdAt, shop)}
+              </MetadataListItem>
             </MetadataList>
             <VStack gap={3}>
               <Heading level={3}>Changes</Heading>
@@ -225,13 +238,14 @@ function AuditContent() {
                 key: 'when',
                 header: 'When',
                 width: { type: 'pixel', value: 190 },
-                renderCell: (e) => <Text hasTabularNumbers>{formatDateTime(e.createdAt, shop)}</Text>,
+                renderCell: (e) => (
+                  <Text hasTabularNumbers>{formatDateTime(e.createdAt, shop)}</Text>
+                ),
               },
               {
                 key: 'who',
                 header: 'Who',
-                renderCell: (e) =>
-                  e.actor ? e.actor.name : <Text color="secondary">System</Text>,
+                renderCell: (e) => (e.actor ? e.actor.name : <Text color="secondary">System</Text>),
               },
               {
                 key: 'action',

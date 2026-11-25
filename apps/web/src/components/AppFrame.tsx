@@ -64,6 +64,7 @@ function UserMenu() {
     <DropdownMenu
       alignment="end"
       menuWidth={280}
+      menuMaxHeight={560}
       hasChevron={false}
       button={{
         label: `Account: ${me.user.name}`,
@@ -82,7 +83,9 @@ function UserMenu() {
         </VStack>
       }
     >
-      {showSettings ? <DropdownMenuItem label="Settings" icon={Cog6ToothIcon} href="/settings" /> : null}
+      {showSettings ? (
+        <DropdownMenuItem label="Settings" icon={Cog6ToothIcon} href="/settings" />
+      ) : null}
       {me.memberships.length > 1 ? (
         <>
           <DropdownMenuDivider />
@@ -229,4 +232,3 @@ export function AppFrame({ children }: { children: ReactNode }) {
     </AppShell>
   );
 }
-

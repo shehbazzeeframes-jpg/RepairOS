@@ -62,7 +62,9 @@ function SignIn() {
   return (
     <AuthLayout
       title="Sign in"
-      subtitle={invite.shopName ? `Sign in to join ${invite.shopName}.` : 'Welcome back to your shop.'}
+      subtitle={
+        invite.shopName ? `Sign in to join ${invite.shopName}.` : 'Welcome back to your shop.'
+      }
       footer={
         <Text color="secondary">
           New to RepairOS? <Link href={signUpHref}>Create an account</Link>

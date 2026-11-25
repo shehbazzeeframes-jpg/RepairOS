@@ -90,8 +90,7 @@ export async function mockApi(page: Page, options: MockApiOptions): Promise<Mock
     }
     state.calls.push({ method: request.method(), path: url.pathname, search: url.search, body });
 
-    const handler =
-      options.handlers?.[key] ?? patterns.find(([re]) => re.test(key))?.[1];
+    const handler = options.handlers?.[key] ?? patterns.find(([re]) => re.test(key))?.[1];
     if (handler) return handler(route, request);
 
     if (key === 'GET /api/me') {

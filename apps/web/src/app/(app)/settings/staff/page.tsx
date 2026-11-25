@@ -110,7 +110,9 @@ function StaffPageContent() {
         case 'revoke':
           return apiFetch(`/api/staff/invites/${row.id}/revoke`, z.unknown(), { method: 'POST' });
         case 'link':
-          return apiFetch(`/api/staff/invites/${row.id}/link`, InviteLinkResponse, { method: 'POST' });
+          return apiFetch(`/api/staff/invites/${row.id}/link`, InviteLinkResponse, {
+            method: 'POST',
+          });
         case 'deactivate':
         case 'reactivate':
           return apiFetch(`/api/staff/${row.id}/${action}`, StaffListItem, { method: 'POST' });
@@ -143,7 +145,10 @@ function StaffPageContent() {
     },
     onError: (err, { row }) => {
       setConfirming(null);
-      showToast({ body: errorMessage(err, { email: row.email, name: row.name ?? row.email }), type: 'error' });
+      showToast({
+        body: errorMessage(err, { email: row.email, name: row.name ?? row.email }),
+        type: 'error',
+      });
     },
   });
 
@@ -194,7 +199,10 @@ function StaffPageContent() {
     <>
       <title>Staff · RepairOS</title>
       <HStack gap={6} hAlign="between" vAlign="end" wrap="wrap">
-        <PageIntro title="Staff" description="Everyone who can sign in to this shop, and pending invites." />
+        <PageIntro
+          title="Staff"
+          description="Everyone who can sign in to this shop, and pending invites."
+        />
         {inviteButton}
       </HStack>
 
@@ -219,7 +227,12 @@ function StaffPageContent() {
       ) : null}
 
       <HStack>
-        <SegmentedControl label="Show" value={filter} onChange={(v) => setFilter(v as Filter)} size="sm">
+        <SegmentedControl
+          label="Show"
+          value={filter}
+          onChange={(v) => setFilter(v as Filter)}
+          size="sm"
+        >
           <SegmentedControlItem value="current" label="Active & invited" />
           <SegmentedControlItem value="deactivated" label="Deactivated" />
           <SegmentedControlItem value="all" label="All" />
@@ -286,9 +299,10 @@ function StaffPageContent() {
                         <Text type="supporting" color="secondary">
                           {r.inviteExpired ? `Expired on ${when}` : `Expires ${when}`}
                         </Text>
-                        {r.inviteEmailStatus === 'FAILED' && canManage && canManageRole(myRole, r.role) ? (
+                        {r.inviteEmailStatus === 'FAILED' &&
+                        canManage &&
+                        canManageRole(myRole, r.role) ? (
                           <Text type="supporting">
-                            Email failed.{' '}
                             <Link
                               href="#"
                               onClick={(e) => {
@@ -296,7 +310,7 @@ function StaffPageContent() {
                                 act.mutate({ row: r, action: 'resend' });
                               }}
                             >
-                              Resend
+                              Resend invite
                             </Link>
                           </Text>
                         ) : null}
@@ -318,7 +332,11 @@ function StaffPageContent() {
                 renderCell: (r) => {
                   const items = actionsFor(r);
                   return items.length > 0 ? (
-                    <MoreMenu label={`Actions for ${displayName(r)}`} alignment="end" items={items} />
+                    <MoreMenu
+                      label={`Actions for ${displayName(r)}`}
+                      alignment="end"
+                      items={items}
+                    />
                   ) : null;
                 },
               },

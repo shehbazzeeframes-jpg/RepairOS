@@ -50,7 +50,13 @@ interface EntryRow extends Record<string, unknown> {
   person: TimesheetStaff;
 }
 
-function Flags({ entry, shopClock }: { entry: TimeEntry; shopClock: { timezone: string; locale: string } }) {
+function Flags({
+  entry,
+  shopClock,
+}: {
+  entry: TimeEntry;
+  shopClock: { timezone: string; locale: string };
+}) {
   return (
     <HStack gap={1} wrap="wrap">
       {entry.flaggedLong ? <Badge variant="warning" label="Long shift" /> : null}
@@ -108,7 +114,9 @@ function TimesheetsContent() {
     {
       key: 'in',
       header: 'Clock in',
-      renderCell: (r: EntryRow) => <Text hasTabularNumbers>{formatTime(r.entry.clockInAt, shop)}</Text>,
+      renderCell: (r: EntryRow) => (
+        <Text hasTabularNumbers>{formatTime(r.entry.clockInAt, shop)}</Text>
+      ),
     },
     {
       key: 'out',
@@ -124,7 +132,9 @@ function TimesheetsContent() {
       key: 'duration',
       header: 'Duration',
       align: 'end' as const,
-      renderCell: (r: EntryRow) => <Text hasTabularNumbers>{formatDuration(r.entry.durationMinutes)}</Text>,
+      renderCell: (r: EntryRow) => (
+        <Text hasTabularNumbers>{formatDuration(r.entry.durationMinutes)}</Text>
+      ),
     },
     {
       key: 'flags',
@@ -155,7 +165,10 @@ function TimesheetsContent() {
     <>
       <title>Timesheets · RepairOS</title>
       <HStack gap={6} hAlign="between" vAlign="end" wrap="wrap">
-        <PageIntro title="Timesheets" description={`Hours worked, in shop time (${shop.timezone}).`} />
+        <PageIntro
+          title="Timesheets"
+          description={`Hours worked, in shop time (${shop.timezone}).`}
+        />
         <HStack gap={2}>
           {can('timesheet.export') && valid.success ? (
             <Button
@@ -194,7 +207,10 @@ function TimesheetsContent() {
             { value: 'all', label: 'All staff' },
             ...members.map((m) => ({
               value: m.userId as string,
-              label: m.status === 'DEACTIVATED' ? `${m.name ?? m.email} (deactivated)` : (m.name ?? m.email),
+              label:
+                m.status === 'DEACTIVATED'
+                  ? `${m.name ?? m.email} (deactivated)`
+                  : (m.name ?? m.email),
             })),
           ]}
         />
@@ -212,7 +228,9 @@ function TimesheetsContent() {
       ) : data && data.staff.length === 0 ? (
         <EmptyState
           icon={<Icon icon={ClockIcon} size="lg" color="secondary" />}
-          title={needsReview ? 'Nothing needs review in this period' : 'No hours recorded in this period'}
+          title={
+            needsReview ? 'Nothing needs review in this period' : 'No hours recorded in this period'
+          }
           description="Staff clock in and out from the top bar. Pick another date range or person."
         />
       ) : data ? (
@@ -254,7 +272,9 @@ function TimesheetsContent() {
             />
           </VStack>
           {data.staff.map((person) => {
-            const rows: EntryRow[] = person.days.flatMap((d) => d.entries.map((entry) => ({ entry, person })));
+            const rows: EntryRow[] = person.days.flatMap((d) =>
+              d.entries.map((entry) => ({ entry, person })),
+            );
             return (
               <VStack gap={3} key={person.userId}>
                 <Heading level={2}>

@@ -13,7 +13,11 @@ import { Heading, Text } from '@astryxdesign/core/Text';
 import { useToast } from '@astryxdesign/core/Toast';
 import { HStack } from '@astryxdesign/core/HStack';
 import { VStack } from '@astryxdesign/core/VStack';
-import { ArrowRightStartOnRectangleIcon, CalendarDaysIcon, ClockIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowRightStartOnRectangleIcon,
+  CalendarDaysIcon,
+  ClockIcon,
+} from '@heroicons/react/24/outline';
 import {
   LONG_SHIFT_MINUTES,
   TIMECLOCK_PATHS,
@@ -56,7 +60,11 @@ function EntriesTable({ entries, shop }: { entries: TimeEntry[]; shop: ShopClock
       density="compact"
       emptyState={<Text color="secondary">No hours recorded.</Text>}
       columns={[
-        { key: 'date', header: 'Date', renderCell: (e) => formatLocalDate(e.localDate, shop.locale, false) },
+        {
+          key: 'date',
+          header: 'Date',
+          renderCell: (e) => formatLocalDate(e.localDate, shop.locale, false),
+        },
         { key: 'in', header: 'In', renderCell: (e) => formatTime(e.clockInAt, shop) },
         {
           key: 'out',
@@ -86,7 +94,8 @@ function MyHoursDialog({
   const weekStart = thisWeek(todayInZone(shop.timezone)).from;
   const current = entries.filter((e) => e.localDate >= weekStart);
   const previous = entries.filter((e) => e.localDate < weekStart);
-  const total = (list: TimeEntry[]) => formatDuration(list.reduce((s, e) => s + e.durationMinutes, 0));
+  const total = (list: TimeEntry[]) =>
+    formatDuration(list.reduce((s, e) => s + e.durationMinutes, 0));
   return (
     <Dialog isOpen onOpenChange={(open) => !open && onClose()} width={560}>
       <DialogHeader
@@ -158,9 +167,13 @@ export function ClockControl({ isCompact }: { isCompact: boolean }) {
 
   const clock = useMutation({
     mutationFn: (direction: 'in' | 'out') =>
-      apiFetch(direction === 'in' ? TIMECLOCK_PATHS.clockIn : TIMECLOCK_PATHS.clockOut, TimeclockStatus, {
-        method: 'POST',
-      }),
+      apiFetch(
+        direction === 'in' ? TIMECLOCK_PATHS.clockIn : TIMECLOCK_PATHS.clockOut,
+        TimeclockStatus,
+        {
+          method: 'POST',
+        },
+      ),
     onMutate: async (direction) => {
       await queryClient.cancelQueries({ queryKey: qk.timeclock });
       const previous = queryClient.getQueryData<TimeclockStatus>(qk.timeclock);
@@ -217,11 +230,17 @@ export function ClockControl({ isCompact }: { isCompact: boolean }) {
           <MoreMenu
             label="Time clock options"
             alignment="end"
-            items={[{ label: 'My hours', icon: CalendarDaysIcon, onClick: () => setShowHours(true) }]}
+            items={[
+              { label: 'My hours', icon: CalendarDaysIcon, onClick: () => setShowHours(true) },
+            ]}
           />
         ) : null}
         {showHours && status ? (
-          <MyHoursDialog entries={status.recentEntries} shop={shop} onClose={() => setShowHours(false)} />
+          <MyHoursDialog
+            entries={status.recentEntries}
+            shop={shop}
+            onClose={() => setShowHours(false)}
+          />
         ) : null}
       </HStack>
     );
@@ -274,10 +293,18 @@ export function ClockControl({ isCompact }: { isCompact: boolean }) {
           icon={ArrowRightStartOnRectangleIcon}
           onClick={() => clock.mutate('out')}
         />
-        <DropdownMenuItem label="My hours" icon={CalendarDaysIcon} onClick={() => setShowHours(true)} />
+        <DropdownMenuItem
+          label="My hours"
+          icon={CalendarDaysIcon}
+          onClick={() => setShowHours(true)}
+        />
       </DropdownMenu>
       {showHours ? (
-        <MyHoursDialog entries={status.recentEntries} shop={shop} onClose={() => setShowHours(false)} />
+        <MyHoursDialog
+          entries={status.recentEntries}
+          shop={shop}
+          onClose={() => setShowHours(false)}
+        />
       ) : null}
     </>
   );

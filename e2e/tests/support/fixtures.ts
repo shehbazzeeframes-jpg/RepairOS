@@ -69,7 +69,9 @@ export const ZERO = TaxRate.parse({
 
 export const TAX_RATES = TaxRateListResponse.parse({ items: [VAT, ZERO] });
 
-function staffRow(row: Partial<StaffListItem> & Pick<StaffListItem, 'id' | 'email' | 'role'>): StaffListItem {
+function staffRow(
+  row: Partial<StaffListItem> & Pick<StaffListItem, 'id' | 'email' | 'role'>,
+): StaffListItem {
   return StaffListItem.parse({
     kind: 'MEMBER',
     userId: `usr_${row.id}`,
@@ -138,7 +140,9 @@ export function staffList(items: StaffListItem[], used = 4): StaffListResponse {
   return StaffListResponse.parse({ items, seats: { used, limit: 5 } });
 }
 
-function entry(e: Partial<TimeEntry> & Pick<TimeEntry, 'id' | 'userId' | 'clockInAt' | 'localDate'>): TimeEntry {
+function entry(
+  e: Partial<TimeEntry> & Pick<TimeEntry, 'id' | 'userId' | 'clockInAt' | 'localDate'>,
+): TimeEntry {
   return TimeEntry.parse({
     clockOutAt: null,
     durationMinutes: 0,
@@ -168,7 +172,12 @@ export const SAM_ENTRIES = [
     localDate: '2026-11-24',
     durationMinutes: 875,
     flaggedLong: true,
-    edited: { at: '2026-11-25T10:00:00.000Z', byUserId: USER.id, byName: USER.name, reason: 'Forgot to clock out' },
+    edited: {
+      at: '2026-11-25T10:00:00.000Z',
+      byUserId: USER.id,
+      byName: USER.name,
+      reason: 'Forgot to clock out',
+    },
   }),
 ];
 
@@ -217,7 +226,11 @@ export const TIMESHEET = TimesheetResponse.parse({
   needsReviewCount: 1,
 });
 
-export const EMPTY_TIMESHEET = TimesheetResponse.parse({ ...TIMESHEET, staff: [], needsReviewCount: 0 });
+export const EMPTY_TIMESHEET = TimesheetResponse.parse({
+  ...TIMESHEET,
+  staff: [],
+  needsReviewCount: 0,
+});
 
 const actor = { userId: USER.id, name: USER.name };
 
@@ -288,6 +301,10 @@ export const INVITE_VALID = InvitePreview.parse({
   expiresAt: '2026-12-02T09:00:00.000Z',
 });
 
-export const INVITE_EXPIRED = InvitePreview.parse({ ...INVITE_VALID, state: 'EXPIRED', expiresAt: '2026-11-10T09:00:00.000Z' });
+export const INVITE_EXPIRED = InvitePreview.parse({
+  ...INVITE_VALID,
+  state: 'EXPIRED',
+  expiresAt: '2026-11-10T09:00:00.000Z',
+});
 
 export const JO = { id: 'usr_jo', name: 'Jo Bloggs', email: 'jo@example.com' };

@@ -26,7 +26,10 @@ test.describe('timesheets', () => {
   test('shows totals per person, flags long shifts and links the CSV export', async ({ page }) => {
     const api = await mockApi(page, {
       me: ME_WITH_SHOP,
-      handlers: { 'GET /api/staff': staff, 'GET /api/timesheets': (route) => route.fulfill({ json: TIMESHEET }) },
+      handlers: {
+        'GET /api/staff': staff,
+        'GET /api/timesheets': (route) => route.fulfill({ json: TIMESHEET }),
+      },
     });
     await page.goto('/settings/timesheets');
     await expect(page.getByRole('heading', { level: 1, name: 'Timesheets' })).toBeVisible();
@@ -58,7 +61,9 @@ test.describe('timesheets', () => {
         'GET /api/timesheets': (route) => route.fulfill({ json: TIMESHEET }),
         'PATCH /api/time-entries/:id': async (route, request) => {
           patch = request.postDataJSON();
-          await route.fulfill({ json: TimeEntry.parse({ ...SAM_ENTRIES[1], clockOutAt: '2026-11-24T18:00:00.000Z' }) });
+          await route.fulfill({
+            json: TimeEntry.parse({ ...SAM_ENTRIES[1], clockOutAt: '2026-11-24T18:00:00.000Z' }),
+          });
         },
       },
     });
@@ -76,7 +81,10 @@ test.describe('timesheets', () => {
     await dialog.getByRole('button', { name: 'Save entry' }).click();
     await expect(toast(page, 'Time entry updated')).toBeVisible();
     // 18:00 London on 24 Nov (GMT) = 18:00Z.
-    expect(patch).toEqual({ clockOutAt: '2026-11-24T18:00:00.000Z', reason: 'Forgot to clock out' });
+    expect(patch).toEqual({
+      clockOutAt: '2026-11-24T18:00:00.000Z',
+      reason: 'Forgot to clock out',
+    });
   });
 
   test('deleting an entry asks for a reason', async ({ page }) => {
@@ -107,16 +115,23 @@ test.describe('timesheets', () => {
   test('a front desk user has no access', async ({ page }) => {
     await mockApi(page, { me: meAs('FRONT_DESK') });
     await page.goto('/settings/timesheets');
-    await expect(page.getByRole('heading', { name: "You don't have access to this page" })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: "You don't have access to this page" }),
+    ).toBeVisible();
   });
 
   test('empty period', async ({ page }) => {
     await mockApi(page, {
       me: ME_WITH_SHOP,
-      handlers: { 'GET /api/staff': staff, 'GET /api/timesheets': (route) => route.fulfill({ json: EMPTY_TIMESHEET }) },
+      handlers: {
+        'GET /api/staff': staff,
+        'GET /api/timesheets': (route) => route.fulfill({ json: EMPTY_TIMESHEET }),
+      },
     });
     await page.goto('/settings/timesheets');
-    await expect(page.getByRole('heading', { name: 'No hours recorded in this period' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'No hours recorded in this period' }),
+    ).toBeVisible();
   });
 });
 
@@ -127,13 +142,17 @@ test.describe('audit log', () => {
       handlers: {
         'GET /api/staff': staff,
         'GET /api/audit-events': (route, request) =>
-          route.fulfill({ json: new URL(request.url()).searchParams.get('cursor') ? AUDIT_PAGE_2 : AUDIT_PAGE_1 }),
+          route.fulfill({
+            json: new URL(request.url()).searchParams.get('cursor') ? AUDIT_PAGE_2 : AUDIT_PAGE_1,
+          }),
         'GET /api/audit-events/:id': (route) => route.fulfill({ json: AUDIT_DETAIL }),
       },
     });
     await page.goto('/settings/audit');
     await expect(page.getByRole('cell', { name: 'Tax rate: VAT' })).toBeVisible();
-    expect(api.calls.find((c) => c.path === '/api/audit-events')?.search).toBe('?from=2026-11-19&to=2026-11-25');
+    expect(api.calls.find((c) => c.path === '/api/audit-events')?.search).toBe(
+      '?from=2026-11-19&to=2026-11-25',
+    );
 
     await page.getByRole('button', { name: 'Load more' }).click();
     await expect(page.getByRole('cell', { name: 'Shop: Fix It Phones' })).toBeVisible();
@@ -145,7 +164,9 @@ test.describe('audit log', () => {
     const rate = drawer.getByRole('row', { name: /Rate/ });
     await expect(rate.getByRole('cell', { name: '20%' })).toBeVisible();
     await expect(rate.getByRole('cell', { name: '17.5%' })).toBeVisible();
-    await expect(drawer.getByRole('row', { name: /Applies to/ }).getByText('Goods (parts & accessories)')).toBeVisible();
+    await expect(
+      drawer.getByRole('row', { name: /Applies to/ }).getByText('Goods (parts & accessories)'),
+    ).toBeVisible();
     // Unchanged fields are hidden.
     await expect(drawer.getByRole('cell', { name: 'Name', exact: true })).toHaveCount(0);
 

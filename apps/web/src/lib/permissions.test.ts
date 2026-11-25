@@ -1,6 +1,12 @@
 import { permissionsFor } from '@repairos/contracts';
 import { describe, expect, it } from 'vitest';
-import { can, hiddenMainNav, settingsHome, settingsItemFor, visibleSettingsNav } from './permissions';
+import {
+  can,
+  hiddenMainNav,
+  settingsHome,
+  settingsItemFor,
+  visibleSettingsNav,
+} from './permissions';
 
 const labels = (perms: ReturnType<typeof permissionsFor>) =>
   visibleSettingsNav(perms).map((i) => i.label);

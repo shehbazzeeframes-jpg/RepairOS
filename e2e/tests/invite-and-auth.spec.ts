@@ -1,6 +1,14 @@
 import { expect, test } from '@playwright/test';
 import { AcceptInviteResponse, InvitePreview, MeResponse } from '@repairos/contracts';
-import { INVITE_EXPIRED, INVITE_VALID, JO, NOW, TOKEN, TOKEN_EXPIRED, meAs } from './support/fixtures';
+import {
+  INVITE_EXPIRED,
+  INVITE_VALID,
+  JO,
+  NOW,
+  TOKEN,
+  TOKEN_EXPIRED,
+  meAs,
+} from './support/fixtures';
 import { ME_NO_SHOP, SHOP, apiError, mockApi, toast } from './support/mock-api';
 
 test.beforeEach(async ({ page }) => {
@@ -17,7 +25,8 @@ test.describe('forgot / reset password', () => {
     const api = await mockApi(page, {
       me: null,
       handlers: {
-        'POST /api/auth/request-password-reset': (route) => route.fulfill({ json: { status: true } }),
+        'POST /api/auth/request-password-reset': (route) =>
+          route.fulfill({ json: { status: true } }),
       },
     });
     await page.goto('/sign-in');
@@ -35,7 +44,9 @@ test.describe('forgot / reset password', () => {
   test('resets the password with a valid token', async ({ page }) => {
     const api = await mockApi(page, {
       me: null,
-      handlers: { 'POST /api/auth/reset-password': (route) => route.fulfill({ json: { status: true } }) },
+      handlers: {
+        'POST /api/auth/reset-password': (route) => route.fulfill({ json: { status: true } }),
+      },
     });
     await page.goto('/reset-password?token=reset123');
     await page.getByLabel('New password', { exact: true }).fill('short');
@@ -70,7 +81,10 @@ test.describe('forgot / reset password', () => {
     await page.getByLabel('Confirm new password').fill('correct-horse-battery');
     await page.getByRole('button', { name: 'Save new password' }).click();
     await expect(page.getByRole('heading', { name: 'This link has expired' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Request a new link' })).toHaveAttribute('href', '/forgot-password');
+    await expect(page.getByRole('link', { name: 'Request a new link' })).toHaveAttribute(
+      'href',
+      '/forgot-password',
+    );
   });
 });
 
@@ -89,7 +103,12 @@ test.describe('invite', () => {
         [`POST /api/invites/${TOKEN}/accept`]: async (route) => {
           api.me = meAs('FRONT_DESK', { user: JO });
           await route.fulfill({
-            json: AcceptInviteResponse.parse({ shopId: SHOP.id, shopName: SHOP.name, role: 'FRONT_DESK', alreadyMember: false }),
+            json: AcceptInviteResponse.parse({
+              shopId: SHOP.id,
+              shopName: SHOP.name,
+              role: 'FRONT_DESK',
+              alreadyMember: false,
+            }),
           });
         },
       },
@@ -113,10 +132,14 @@ test.describe('invite', () => {
     await page.getByRole('button', { name: 'Join Fix It Phones' }).click();
     await expect(page).toHaveURL(/\/$/);
     await expect(toast(page, 'Welcome to Fix It Phones')).toBeVisible();
-    expect(api.calls.find((c) => c.path === '/api/auth/sign-up/email')?.body).toMatchObject({ email: 'jo@example.com' });
+    expect(api.calls.find((c) => c.path === '/api/auth/sign-up/email')?.body).toMatchObject({
+      email: 'jo@example.com',
+    });
   });
 
-  test('"I already have an account" prefills sign-in and returns to the invite', async ({ page }) => {
+  test('"I already have an account" prefills sign-in and returns to the invite', async ({
+    page,
+  }) => {
     const api = await mockApi(page, {
       me: null,
       handlers: {
@@ -136,18 +159,28 @@ test.describe('invite', () => {
     await expect(page.getByRole('button', { name: 'Join Fix It Phones' })).toBeVisible();
   });
 
-  test('a signed-in user with no shop is not sent to onboarding from an invite', async ({ page }) => {
-    await mockApi(page, { me: JO_NO_SHOP, handlers: { [`GET /api/invites/${TOKEN}`]: preview(INVITE_VALID) } });
+  test('a signed-in user with no shop is not sent to onboarding from an invite', async ({
+    page,
+  }) => {
+    await mockApi(page, {
+      me: JO_NO_SHOP,
+      handlers: { [`GET /api/invites/${TOKEN}`]: preview(INVITE_VALID) },
+    });
     await page.goto(`/invite/${TOKEN}`);
     await expect(page.getByRole('button', { name: 'Join Fix It Phones' })).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`/invite/${TOKEN}$`));
   });
 
   test('wrong account: explains the mismatch and offers sign out', async ({ page }) => {
-    const api = await mockApi(page, { me: ME_NO_SHOP, handlers: { [`GET /api/invites/${TOKEN}`]: preview(INVITE_VALID) } });
+    const api = await mockApi(page, {
+      me: ME_NO_SHOP,
+      handlers: { [`GET /api/invites/${TOKEN}`]: preview(INVITE_VALID) },
+    });
     await page.goto(`/invite/${TOKEN}`);
     await expect(
-      page.getByText("This invite is for jo@example.com, but you're signed in as alex@fixitphones.co.uk."),
+      page.getByText(
+        "This invite is for jo@example.com, but you're signed in as alex@fixitphones.co.uk.",
+      ),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Join Fix It Phones' })).toHaveCount(0);
     await page.getByRole('button', { name: 'Sign out and continue' }).click();
@@ -171,10 +204,17 @@ test.describe('invite', () => {
   });
 
   test('expired invite', async ({ page }) => {
-    await mockApi(page, { me: null, handlers: { [`GET /api/invites/${TOKEN_EXPIRED}`]: preview(INVITE_EXPIRED) } });
+    await mockApi(page, {
+      me: null,
+      handlers: { [`GET /api/invites/${TOKEN_EXPIRED}`]: preview(INVITE_EXPIRED) },
+    });
     await page.goto(`/invite/${TOKEN_EXPIRED}`);
     await expect(page.getByRole('heading', { name: 'Invite expired' })).toBeVisible();
-    await expect(page.getByText(/This invite expired on November 10, 2026\. Ask Priya Shah to send a new one\./)).toBeVisible();
+    await expect(
+      page.getByText(
+        /This invite expired on November 10, 2026\. Ask Priya Shah to send a new one\./,
+      ),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: /Join/ })).toHaveCount(0);
   });
 
@@ -190,7 +230,9 @@ test.describe('invite', () => {
       },
     });
     await page.goto(`/invite/${TOKEN}`);
-    await expect(page.getByText('This invite is no longer valid. Ask the shop for a new invite.')).toBeVisible();
+    await expect(
+      page.getByText('This invite is no longer valid. Ask the shop for a new invite.'),
+    ).toBeVisible();
 
     state = InvitePreview.parse({ state: 'ACCEPTED', shopId: SHOP.id, shopName: SHOP.name });
     await page.reload();

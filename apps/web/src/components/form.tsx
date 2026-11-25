@@ -103,7 +103,11 @@ export function FormSelector<T extends FieldValues, TOut = T>({
         return isClearable ? (
           <Selector {...common} hasClear value={value} onChange={(v) => field.onChange(v ?? '')} />
         ) : (
-          <Selector {...common} value={value ?? undefined} onChange={(v) => field.onChange(v ?? '')} />
+          <Selector
+            {...common}
+            value={value ?? undefined}
+            onChange={(v) => field.onChange(v ?? '')}
+          />
         );
       }}
     />

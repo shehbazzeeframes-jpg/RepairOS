@@ -62,7 +62,15 @@ function InvalidInvite() {
 
 type Valid = Extract<InvitePreview, { state: 'VALID' }>;
 
-function ValidInvite({ token, invite, me }: { token: string; invite: Valid; me: MeResponse | null }) {
+function ValidInvite({
+  token,
+  invite,
+  me,
+}: {
+  token: string;
+  invite: Valid;
+  me: MeResponse | null;
+}) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const showToast = useToast();
@@ -130,11 +138,9 @@ function ValidInvite({ token, invite, me }: { token: string; invite: Valid; me: 
         <Banner
           status="warning"
           title="Wrong account"
-          description={
-            (API_ERROR_MESSAGES.INVITE_EMAIL_MISMATCH ?? '')
-              .replace('{inviteEmail}', invite.email)
-              .replace('{email}', me.user.email)
-          }
+          description={(API_ERROR_MESSAGES.INVITE_EMAIL_MISMATCH ?? '')
+            .replace('{inviteEmail}', invite.email)
+            .replace('{email}', me.user.email)}
         />
         <Text color="secondary">
           Sign out, then sign in or create an account with {invite.email}.
@@ -177,7 +183,11 @@ function AlreadyJoined({ shopId, shopName }: { shopId: string; shopName: string 
     <InviteCard title="Already joined">
       <Text>You&apos;ve already joined {shopName}.</Text>
       {switchShop.isError ? (
-        <Banner status="error" title="Could not open the shop" description={errorMessage(switchShop.error)} />
+        <Banner
+          status="error"
+          title="Could not open the shop"
+          description={errorMessage(switchShop.error)}
+        />
       ) : null}
       <Button
         label={`Go to ${shopName}`}
@@ -200,7 +210,8 @@ export default function InvitePage() {
   const preview = useInvitePreview(token, wellFormed);
 
   if (!wellFormed) return <InvalidInvite />;
-  if (gate.status === 'error') return <ErrorState message={gate.error.message} onRetry={gate.retry} />;
+  if (gate.status === 'error')
+    return <ErrorState message={gate.error.message} onRetry={gate.retry} />;
   if (gate.status === 'loading' || preview.isPending) {
     return (
       <InviteCard title="Opening your invite">
@@ -212,7 +223,9 @@ export default function InvitePage() {
   }
   if (preview.isError) {
     if (hasErrorCode(preview.error, 'INVITE_INVALID', 'NOT_FOUND')) return <InvalidInvite />;
-    return <ErrorState message={errorMessage(preview.error)} onRetry={() => void preview.refetch()} />;
+    return (
+      <ErrorState message={errorMessage(preview.error)} onRetry={() => void preview.refetch()} />
+    );
   }
 
   const invite = preview.data;
@@ -223,8 +236,8 @@ export default function InvitePage() {
       return (
         <InviteCard title="Invite expired" footer={<Link href="/">Go to RepairOS</Link>}>
           <Text>
-            This invite expired on {formatDate(invite.expiresAt)}. Ask {invite.inviterName} to send a
-            new one.
+            This invite expired on {formatDate(invite.expiresAt)}. Ask {invite.inviterName} to send
+            a new one.
           </Text>
         </InviteCard>
       );

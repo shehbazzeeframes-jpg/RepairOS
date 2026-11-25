@@ -56,19 +56,13 @@ function EmailView({ id }: { id: string }) {
       {links.length > 0 ? (
         <VStack gap={2}>
           <Text weight="semibold">Links in this email</Text>
-          <List hasDividers>
+          <VStack gap={2}>
             {links.map((l) => (
-              <ListItem
-                key={l.url}
-                label={
-                  <Link href={l.appPath ?? l.url} isExternalLink={!l.appPath}>
-                    {l.appPath ?? l.url}
-                  </Link>
-                }
-                description={l.appPath ? 'Opens in this app' : undefined}
-              />
+              <Link key={l.url} href={l.appPath ?? l.url} isExternalLink={!l.appPath} isStandalone>
+                {l.appPath ?? l.url}
+              </Link>
             ))}
-          </List>
+          </VStack>
         </VStack>
       ) : null}
       {email.html ? (
@@ -80,7 +74,13 @@ function EmailView({ id }: { id: string }) {
         />
       ) : null}
       {email.text ? (
-        <CodeBlock code={email.text} title="Plain text" hasLanguageLabel={false} isWrapped width="100%" />
+        <CodeBlock
+          code={email.text}
+          title="Plain text"
+          hasLanguageLabel={false}
+          isWrapped
+          width="100%"
+        />
       ) : null}
     </VStack>
   );

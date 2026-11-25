@@ -19,7 +19,8 @@ export default function AccessRemovedPage() {
   const signOut = useSignOut();
   const switchShop = useSwitchShop();
 
-  if (gate.status === 'error') return <ErrorState message={gate.error.message} onRetry={gate.retry} />;
+  if (gate.status === 'error')
+    return <ErrorState message={gate.error.message} onRetry={gate.retry} />;
   if (gate.status === 'loading' || !gate.me?.accessRemoved) return <FullPageLoader />;
   const { me } = gate;
   const shopName = me.accessRemoved?.shopName ?? 'this shop';
@@ -32,11 +33,17 @@ export default function AccessRemovedPage() {
     >
       <VStack gap={5}>
         <Text>
-          An owner or manager of {shopName} removed your access. Your account still works: you can
-          open another shop you belong to, or set up your own.
+          An owner or manager of {shopName} removed your access. Your account still works:{' '}
+          {me.memberships.length > 0
+            ? 'open another shop you belong to, or set up your own.'
+            : 'you can set up your own shop, or ask the shop for a new invite.'}
         </Text>
         {switchShop.isError ? (
-          <Banner status="error" title="Could not open that shop" description={errorMessage(switchShop.error)} />
+          <Banner
+            status="error"
+            title="Could not open that shop"
+            description={errorMessage(switchShop.error)}
+          />
         ) : null}
         {me.memberships.length > 0 ? (
           <VStack gap={2}>

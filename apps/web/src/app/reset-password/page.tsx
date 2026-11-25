@@ -75,7 +75,9 @@ function ResetPassword() {
     <AuthLayout title="Choose a new password" footer={backToSignIn}>
       <form onSubmit={onSubmit} noValidate aria-label="Choose a new password">
         <FormLayout defaultOptionality="required">
-          {error ? <Banner status="error" title="Could not reset your password" description={error} /> : null}
+          {error ? (
+            <Banner status="error" title="Could not reset your password" description={error} />
+          ) : null}
           <FormTextInput
             control={control}
             name="password"

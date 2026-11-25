@@ -58,7 +58,10 @@ export const ENTITY_LABELS: Record<AuditEntityType, string> = {
 
 export function fieldLabel(key: string): string {
   if (FIELD_LABELS[key]) return FIELD_LABELS[key];
-  const words = key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_.]/g, ' ').toLowerCase();
+  const words = key
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_.]/g, ' ')
+    .toLowerCase();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
@@ -74,9 +77,7 @@ interface HoursDay {
 function isHoursWeek(value: unknown): value is HoursDay[] {
   return (
     Array.isArray(value) &&
-    value.every(
-      (d) => d && typeof d === 'object' && 'weekday' in d && 'isOpen' in d,
-    )
+    value.every((d) => d && typeof d === 'object' && 'weekday' in d && 'isOpen' in d)
   );
 }
 

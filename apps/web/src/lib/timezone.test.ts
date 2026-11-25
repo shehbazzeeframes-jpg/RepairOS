@@ -20,9 +20,13 @@ describe('shop-time conversion', () => {
   });
 
   it('handles New York and Karachi', () => {
-    expect(zonedLocalToUtc('2026-11-24T18:30', 'America/New_York')).toBe('2026-11-24T23:30:00.000Z');
+    expect(zonedLocalToUtc('2026-11-24T18:30', 'America/New_York')).toBe(
+      '2026-11-24T23:30:00.000Z',
+    );
     expect(zonedLocalToUtc('2026-11-24T10:00', 'Asia/Karachi')).toBe('2026-11-24T05:00:00.000Z');
-    expect(utcToZonedLocal('2026-11-24T23:30:00.000Z', 'America/New_York')).toBe('2026-11-24T18:30');
+    expect(utcToZonedLocal('2026-11-24T23:30:00.000Z', 'America/New_York')).toBe(
+      '2026-11-24T18:30',
+    );
   });
 
   it('moves a time in the spring-forward gap forward and picks the earlier repeated hour', () => {

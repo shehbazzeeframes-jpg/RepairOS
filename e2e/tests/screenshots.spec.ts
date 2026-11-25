@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
+import { sprint1Screenshots } from './screenshots-sprint1';
 import { ME_NO_SHOP, ME_WITH_SHOP, mockApi } from './support/mock-api';
 
-/** Run with `pnpm --filter @repairos/e2e screenshots`; writes docs/screens/sprint0/*.png. */
+/** Run with `pnpm --filter @repairos/e2e screenshots`; writes docs/screens/sprint0/*.png and sprint1/*.png. */
 const OUT_DIR = fileURLToPath(new URL('../../docs/screens/sprint0/', import.meta.url));
 
 const VIEWPORTS = [
@@ -51,3 +52,5 @@ for (const viewport of VIEWPORTS) {
     });
   });
 }
+
+sprint1Screenshots();

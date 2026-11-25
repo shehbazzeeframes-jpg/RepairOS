@@ -140,7 +140,11 @@ function RateDialog({
 
   const defaultBox = (kind: 'goods' | 'services') => {
     const name = kind === 'goods' ? 'isDefaultGoods' : 'isDefaultServices';
-    const isCurrent = rate ? (kind === 'goods' ? rate.isDefaultGoods : rate.isDefaultServices) : false;
+    const isCurrent = rate
+      ? kind === 'goods'
+        ? rate.isDefaultGoods
+        : rate.isDefaultServices
+      : false;
     const compatible = canBeDefaultFor(appliesTo, kind);
     return (
       <Controller
@@ -202,7 +206,10 @@ function RateDialog({
               control={control}
               name="appliesTo"
               label="Applies to"
-              options={TaxAppliesTo.options.map((v) => ({ value: v, label: TAX_APPLIES_TO_LABELS[v] }))}
+              options={TaxAppliesTo.options.map((v) => ({
+                value: v,
+                label: TAX_APPLIES_TO_LABELS[v],
+              }))}
             />
             {defaultBox('goods')}
             {defaultBox('services')}
@@ -235,7 +242,9 @@ function PricesIncludeTax({ value, country }: { value: boolean; country: Country
       }),
     onSuccess: async (saved) => {
       setConfirming(null);
-      showToast({ body: saved.pricesIncludeTax ? 'Prices now include tax' : 'Prices now exclude tax' });
+      showToast({
+        body: saved.pricesIncludeTax ? 'Prices now include tax' : 'Prices now exclude tax',
+      });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: qk.shopSettings }),
         queryClient.invalidateQueries({ queryKey: meQueryKey }),
@@ -281,7 +290,13 @@ function RatesTable({ showArchived, locale }: { showArchived: boolean; locale: s
   const [archiving, setArchiving] = useState<TaxRate | null>(null);
 
   const action = useMutation({
-    mutationFn: ({ rate, kind }: { rate: TaxRate; kind: 'archive' | 'restore' | 'goods' | 'services' }) =>
+    mutationFn: ({
+      rate,
+      kind,
+    }: {
+      rate: TaxRate;
+      kind: 'archive' | 'restore' | 'goods' | 'services';
+    }) =>
       kind === 'archive' || kind === 'restore'
         ? apiFetch(`/api/shop/tax-rates/${rate.id}/${kind}`, TaxRate, { method: 'POST' })
         : apiFetch(`/api/shop/tax-rates/${rate.id}`, TaxRate, {
@@ -362,17 +377,38 @@ function RatesTable({ showArchived, locale }: { showArchived: boolean; locale: s
                       alignment="end"
                       items={
                         r.archivedAt
-                          ? [{ label: 'Restore', onClick: () => action.mutate({ rate: r, kind: 'restore' }) }]
+                          ? [
+                              {
+                                label: 'Restore',
+                                onClick: () => action.mutate({ rate: r, kind: 'restore' }),
+                              },
+                            ]
                           : [
                               { label: 'Edit', onClick: () => setEditing(r) },
                               ...(!r.isDefaultGoods && canBeDefaultFor(r.appliesTo, 'goods')
-                                ? [{ label: 'Make goods default', onClick: () => action.mutate({ rate: r, kind: 'goods' as const }) }]
+                                ? [
+                                    {
+                                      label: 'Make goods default',
+                                      onClick: () =>
+                                        action.mutate({ rate: r, kind: 'goods' as const }),
+                                    },
+                                  ]
                                 : []),
                               ...(!r.isDefaultServices && canBeDefaultFor(r.appliesTo, 'services')
-                                ? [{ label: 'Make services default', onClick: () => action.mutate({ rate: r, kind: 'services' as const }) }]
+                                ? [
+                                    {
+                                      label: 'Make services default',
+                                      onClick: () =>
+                                        action.mutate({ rate: r, kind: 'services' as const }),
+                                    },
+                                  ]
                                 : []),
                               { type: 'divider' as const },
-                              { label: 'Archive…', variant: 'destructive' as const, onClick: () => setArchiving(r) },
+                              {
+                                label: 'Archive…',
+                                variant: 'destructive' as const,
+                                onClick: () => setArchiving(r),
+                              },
                             ]
                       }
                     />
@@ -422,7 +458,10 @@ function TaxSettingsPage() {
   return (
     <>
       <title>Tax settings · RepairOS</title>
-      <PageIntro title="Tax" description="How prices handle tax, and the rates your shop charges." />
+      <PageIntro
+        title="Tax"
+        description="How prices handle tax, and the rates your shop charges."
+      />
       <VStack gap={4} maxWidth={640}>
         {settings.isPending ? (
           <RowsSkeleton rows={1} label="Loading tax settings" />

@@ -23,7 +23,8 @@ test('lists emails, renders one in a sandboxed frame and links into the app', as
   await mockApi(page, {
     me: null,
     handlers: {
-      'GET /api/dev/outbox': (route) => route.fulfill({ json: { items: [INVITE_EMAIL, RESET_EMAIL] } }),
+      'GET /api/dev/outbox': (route) =>
+        route.fulfill({ json: { items: [INVITE_EMAIL, RESET_EMAIL] } }),
       'GET /api/dev/outbox/:id': (route, request) =>
         route.fulfill({ json: request.url().endsWith('mail_1') ? RESET_EMAIL : INVITE_EMAIL }),
     },
@@ -37,7 +38,10 @@ test('lists emails, renders one in a sandboxed frame and links into the app', as
   await expect(frame.contentFrame().getByText('Fix It Phones')).toBeVisible();
   await expect(page).not.toHaveTitle('pwned');
 
-  await expect(page.getByRole('link', { name: `/invite/${TOKEN}` })).toHaveAttribute('href', `/invite/${TOKEN}`);
+  await expect(page.getByRole('link', { name: `/invite/${TOKEN}` })).toHaveAttribute(
+    'href',
+    `/invite/${TOKEN}`,
+  );
 
   await page.getByText('Reset your RepairOS password').click();
   await expect(page.getByRole('link', { name: '/reset-password?token=abc' })).toBeVisible();

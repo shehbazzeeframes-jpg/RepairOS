@@ -1,7 +1,16 @@
 import { expect, test } from '@playwright/test';
 import { MeResponse, TimeclockStatus } from '@repairos/contracts';
 import { NOW, meAs } from './support/fixtures';
-import { CLOCKED_OUT, ME_NO_SHOP, ME_WITH_SHOP, SHOP, USER, apiError, mockApi, toast } from './support/mock-api';
+import {
+  CLOCKED_OUT,
+  ME_NO_SHOP,
+  ME_WITH_SHOP,
+  SHOP,
+  USER,
+  apiError,
+  mockApi,
+  toast,
+} from './support/mock-api';
 
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(NOW);
@@ -29,7 +38,9 @@ function clockedInAt(iso: string, todayMinutes = 0): TimeclockStatus {
 }
 
 test.describe('clock in/out', () => {
-  test('clocks in optimistically, shows elapsed time and clocks out with a toast', async ({ page }) => {
+  test('clocks in optimistically, shows elapsed time and clocks out with a toast', async ({
+    page,
+  }) => {
     let releaseClockIn: () => void = () => undefined;
     const clockInHeld = new Promise<void>((resolve) => (releaseClockIn = resolve));
     await mockApi(page, {
@@ -41,7 +52,9 @@ test.describe('clock in/out', () => {
           await route.fulfill({ json: clockedInAt('2026-11-25T12:46:00.000Z') });
         },
         'POST /api/timeclock/clock-out': (route) =>
-          route.fulfill({ json: { ...CLOCKED_OUT, serverNow: NOW.toISOString(), todayMinutes: 472 } }),
+          route.fulfill({
+            json: { ...CLOCKED_OUT, serverNow: NOW.toISOString(), todayMinutes: 472 },
+          }),
       },
     });
     await page.goto('/');
@@ -63,10 +76,15 @@ test.describe('clock in/out', () => {
       me: ME_WITH_SHOP,
       handlers: {
         'GET /api/timeclock/me': (route) =>
-          route.fulfill({ json: clockedIn ? clockedInAt('2026-11-25T14:00:00.000Z') : CLOCKED_OUT }),
+          route.fulfill({
+            json: clockedIn ? clockedInAt('2026-11-25T14:00:00.000Z') : CLOCKED_OUT,
+          }),
         'POST /api/timeclock/clock-in': async (route) => {
           clockedIn = true;
-          await route.fulfill({ status: 409, json: apiError(409, 'ALREADY_CLOCKED_IN', 'Already') });
+          await route.fulfill({
+            status: 409,
+            json: apiError(409, 'ALREADY_CLOCKED_IN', 'Already'),
+          });
         },
       },
     });
@@ -80,7 +98,8 @@ test.describe('clock in/out', () => {
     await mockApi(page, {
       me: ME_WITH_SHOP,
       handlers: {
-        'GET /api/timeclock/me': (route) => route.fulfill({ json: clockedInAt('2026-11-24T08:00:00.000Z') }),
+        'GET /api/timeclock/me': (route) =>
+          route.fulfill({ json: clockedInAt('2026-11-24T08:00:00.000Z') }),
       },
     });
     await page.goto('/');
@@ -115,13 +134,22 @@ test.describe('user menu', () => {
     });
     await page.goto('/settings/general');
     await page.getByRole('button', { name: 'Account: Alex Morgan' }).click();
-    await expect(page.getByRole('menuitemradio', { name: /Fix It Phones/ })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('menuitemradio', { name: /Fix It Phones/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
     await page.getByRole('menuitemradio', { name: /Mobile Medics/ }).click();
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole('navigation', { name: 'Shop' }).getByRole('link', { name: 'Mobile Medics' })).toBeVisible();
+    await expect(
+      page.getByRole('navigation', { name: 'Shop' }).getByRole('link', { name: 'Mobile Medics' }),
+    ).toBeVisible();
     // Technicians have no settings.
-    await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Settings' })).toHaveCount(0);
-    expect(api.calls.find((c) => c.path === '/api/me/active-shop')?.body).toEqual({ shopId: 'shp_2' });
+    await expect(
+      page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Settings' }),
+    ).toHaveCount(0);
+    expect(api.calls.find((c) => c.path === '/api/me/active-shop')?.body).toEqual({
+      shopId: 'shp_2',
+    });
   });
 
   test('"Create a new shop" opens onboarding and shows SHOP_LIMIT_REACHED', async ({ page }) => {
@@ -136,7 +164,9 @@ test.describe('user menu', () => {
     await page.getByRole('button', { name: 'Account: Alex Morgan' }).click();
     await page.getByRole('menuitem', { name: 'Create a new shop' }).click();
     await expect(page).toHaveURL(/\/onboarding\?new=1$/);
-    await expect(page.getByRole('heading', { level: 1, name: 'Set up another shop' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Set up another shop' }),
+    ).toBeVisible();
     await page.getByLabel('Shop name').fill('Second Shop');
     await page.getByRole('combobox', { name: 'Country' }).click();
     await page.getByRole('option', { name: 'United Kingdom' }).click();
@@ -162,7 +192,10 @@ test.describe('access removed', () => {
     await expect(
       page.getByRole('heading', { level: 1, name: 'You no longer have access to Fix It Phones' }),
     ).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Create your own shop' })).toHaveAttribute('href', '/onboarding');
+    await expect(page.getByRole('link', { name: 'Create your own shop' })).toHaveAttribute(
+      'href',
+      '/onboarding',
+    );
     await page.getByRole('button', { name: 'Sign out' }).click();
     await expect(page).toHaveURL(/\/sign-in$/);
     expect(api.calls.some((c) => c.path === '/api/auth/sign-out')).toBe(true);
@@ -170,7 +203,10 @@ test.describe('access removed', () => {
 
   test('a user moved to another shop sees a banner once', async ({ page }) => {
     await mockApi(page, {
-      me: MeResponse.parse({ ...ME_WITH_SHOP, accessRemoved: { shopId: 'shp_9', shopName: 'Old Shop' } }),
+      me: MeResponse.parse({
+        ...ME_WITH_SHOP,
+        accessRemoved: { shopId: 'shp_9', shopName: 'Old Shop' },
+      }),
     });
     await page.goto('/');
     await expect(page.getByText('You no longer have access to Old Shop.')).toBeVisible();

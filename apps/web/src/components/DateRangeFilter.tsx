@@ -1,6 +1,10 @@
 'use client';
 
-import { DateRangeInput, type DateRange, type DateRangePreset } from '@astryxdesign/core/DateRangeInput';
+import {
+  DateRangeInput,
+  type DateRange,
+  type DateRangePreset,
+} from '@astryxdesign/core/DateRangeInput';
 import { daysInRange } from '@repairos/contracts';
 import { errorStatus } from './form';
 import type { LocalDateRange } from '@/lib/timezone';
@@ -44,13 +48,13 @@ export function DateRangeFilter({
       maxRangeSpan={maxDays}
       max={max as ISODate | undefined}
       width={300}
-      presets={presets.map(
-        (p): DateRangePreset => ({
-          label: p.label,
-          getRange: () => ({ start: p.range.from as ISODate, end: p.range.to as ISODate }),
-        }),
+      presets={presets.map((p): DateRangePreset => ({
+        label: p.label,
+        getRange: () => ({ start: p.range.from as ISODate, end: p.range.to as ISODate }),
+      }))}
+      status={errorStatus(
+        error ?? (tooLong ? `Choose a range of ${maxDays} days or fewer` : undefined),
       )}
-      status={errorStatus(error ?? (tooLong ? `Choose a range of ${maxDays} days or fewer` : undefined))}
     />
   );
 }

@@ -41,7 +41,10 @@ export function useTaxRates(includeArchived: boolean) {
   return useQuery({
     queryKey: qk.taxRates(includeArchived),
     queryFn: () =>
-      apiFetch(`/api/shop/tax-rates?includeArchived=${String(includeArchived)}`, TaxRateListResponse),
+      apiFetch(
+        `/api/shop/tax-rates?includeArchived=${String(includeArchived)}`,
+        TaxRateListResponse,
+      ),
   });
 }
 
@@ -84,7 +87,10 @@ export function useTimesheets(q: TimesheetParams, enabled: boolean) {
   });
 }
 
-export type AuditParams = Pick<AuditEventListQuery, 'from' | 'to' | 'userId' | 'action' | 'actionGroup'>;
+export type AuditParams = Pick<
+  AuditEventListQuery,
+  'from' | 'to' | 'userId' | 'action' | 'actionGroup'
+>;
 
 export function useAuditEvents(q: AuditParams, enabled: boolean) {
   return useInfiniteQuery({

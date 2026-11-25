@@ -86,11 +86,20 @@ function HoursEditor({ week }: { week: BusinessHoursWeek }) {
     <form onSubmit={onSubmit} noValidate aria-label="Business hours">
       <VStack gap={5} maxWidth={640}>
         {save.isError ? (
-          <Banner status="error" title="Could not save hours" description={errorMessage(save.error)} />
+          <Banner
+            status="error"
+            title="Could not save hours"
+            description={errorMessage(save.error)}
+          />
         ) : null}
         {canManage ? (
           <HStack>
-            <Button label="Copy Monday to all weekdays" variant="secondary" size="sm" onClick={copyMonday} />
+            <Button
+              label="Copy Monday to all weekdays"
+              variant="secondary"
+              size="sm"
+              onClick={copyMonday}
+            />
           </HStack>
         ) : null}
         <VStack gap={0}>
@@ -126,25 +135,31 @@ function HoursEditor({ week }: { week: BusinessHoursWeek }) {
                   {day?.isOpen ? (
                     <HStack gap={3} vAlign="start">
                       {(['opensAt', 'closesAt'] as const).map((key) => (
-                        <Controller
-                          key={key}
-                          control={control}
-                          name={`days.${weekday}.${key}`}
-                          render={({ field, fieldState }) => (
-                            <TimeInput
-                              label={key === 'opensAt' ? 'Opens' : 'Closes'}
-                              isLabelHidden
-                              width={150}
-                              increment={15}
-                              hourFormat={hourFormat}
-                              presentation="text-input"
-                              isDisabled={!canManage}
-                              value={(field.value ?? undefined) as TimeValue}
-                              onChange={(v) => field.onChange(v ?? null)}
-                              status={errorStatus(fieldState.error?.message)}
-                            />
-                          )}
-                        />
+                        <Fragment key={key}>
+                          {key === 'closesAt' ? (
+                            <HStack minHeight={36} vAlign="center">
+                              <Text color="secondary">to</Text>
+                            </HStack>
+                          ) : null}
+                          <Controller
+                            control={control}
+                            name={`days.${weekday}.${key}`}
+                            render={({ field, fieldState }) => (
+                              <TimeInput
+                                label={key === 'opensAt' ? 'Opens' : 'Closes'}
+                                isLabelHidden
+                                width={150}
+                                increment={15}
+                                hourFormat={hourFormat}
+                                presentation="text-input"
+                                isDisabled={!canManage}
+                                value={(field.value ?? undefined) as TimeValue}
+                                onChange={(v) => field.onChange(v ?? null)}
+                                status={errorStatus(fieldState.error?.message)}
+                              />
+                            )}
+                          />
+                        </Fragment>
                       ))}
                     </HStack>
                   ) : (

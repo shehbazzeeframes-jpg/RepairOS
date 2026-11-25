@@ -1,7 +1,7 @@
 # RepairOS: project rules for every agent
 
 Repair-shop management SaaS (phone & computer repair), $50/store/month.
-Read before work: `docs/PRODUCT.md` (scope), `docs/ARCHITECTURE.md` (stack and rules), `docs/ROADMAP.md` (current sprint), `docs/TEAM.md` (who owns what).
+Read before work: `docs/PRODUCT.md` (scope), `docs/MARKETS.md` (US/UK/PK rules), `docs/ARCHITECTURE.md` (stack and rules), `docs/ROADMAP.md` (current sprint), `docs/TEAM.md` (who owns what).
 
 ## Stack
 pnpm + Turborepo · TypeScript strict · Next.js App Router + React 19 + **Astryx** design system · NestJS · Prisma + PostgreSQL 16 · Better Auth · BullMQ + Redis · Zod contracts · Stripe · Twilio · Resend · Vitest / Supertest / Playwright.

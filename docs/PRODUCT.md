@@ -60,4 +60,4 @@ Integrated card processing (Stripe Terminal), online booking widget, multiple lo
 - Every row is scoped to a shop (tenant); no data leaks between shops.
 - Device passcodes encrypted at rest; audit log for money and stock changes.
 - GDPR-ready: data export and deletion per customer.
-- Currency, tax and date formats are configurable per shop (no market hard-coded).
+- Currency, tax and date formats are configurable per shop (no market hard-coded). Launch markets: US, UK, Pakistan; see `docs/MARKETS.md`.

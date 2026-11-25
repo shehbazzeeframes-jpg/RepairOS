@@ -155,7 +155,10 @@ export function useCustomerDevices(id: string | null, archived = false) {
   return useQuery({
     queryKey: qk.customerDevices(shopId, id ?? '', archived),
     queryFn: () =>
-      apiFetch(`${customerPath('devices', id ?? '')}?archived=${String(archived)}`, DeviceListResponse),
+      apiFetch(
+        `${customerPath('devices', id ?? '')}?archived=${String(archived)}`,
+        DeviceListResponse,
+      ),
     enabled: !!id,
   });
 }

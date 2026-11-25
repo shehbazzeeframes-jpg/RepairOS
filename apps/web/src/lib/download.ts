@@ -24,7 +24,9 @@ export function filenameFromDisposition(header: string | null, fallback: string)
 export async function downloadFile(path: string, fallbackName: string): Promise<string> {
   let res: Response;
   try {
-    res = await fetch(path, { credentials: 'include', headers: { Accept: 'text/csv, application/json, */*', ...shopHeaderFor(path) },
+    res = await fetch(path, {
+      credentials: 'include',
+      headers: { Accept: 'text/csv, application/json, */*', ...shopHeaderFor(path) },
     });
   } catch {
     throw new ApiRequestError({

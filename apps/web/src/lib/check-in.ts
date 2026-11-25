@@ -168,7 +168,11 @@ export function buildCreateTicketInput(s: CheckInState, currency: CurrencyCode):
               phones: nc.phone.trim() ? [{ number: nc.phone.trim(), label: 'MOBILE' }] : [],
               consents: (Object.keys(nc.consents) as ConsentChannel[])
                 .filter((c) => nc.consents[c])
-                .map((channel) => ({ channel, state: 'GRANTED' as const, source: nc.consentSource })),
+                .map((channel) => ({
+                  channel,
+                  state: 'GRANTED' as const,
+                  source: nc.consentSource,
+                })),
             },
           }
         : {}),
@@ -212,7 +216,10 @@ export type ProblemKey = 'customer' | 'device' | 'issues';
 export function checkInProblems(s: CheckInState): { key: ProblemKey; text: string }[] {
   const out: { key: ProblemKey; text: string }[] = [];
   if (!s.customerDone) {
-    out.push({ key: 'customer', text: s.newCustomer ? 'Finish the new customer' : 'Choose a customer' });
+    out.push({
+      key: 'customer',
+      text: s.newCustomer ? 'Finish the new customer' : 'Choose a customer',
+    });
   }
   if (!s.deviceDone) out.push({ key: 'device', text: 'Choose a device' });
   if (s.issues.length === 0 && !s.description.trim()) {
@@ -295,7 +302,13 @@ export function writeDraft(
 ): void {
   try {
     const { state, hadSecret } = draftState(s);
-    const draft: CheckInDraft = { v: 1, savedAt: now.toISOString(), idempotencyKey, hadSecret, state };
+    const draft: CheckInDraft = {
+      v: 1,
+      savedAt: now.toISOString(),
+      idempotencyKey,
+      hadSecret,
+      state,
+    };
     storage()?.setItem(checkInDraftKey(userId, shopId), JSON.stringify(draft));
   } catch {
     // storage full or blocked: drafts are a convenience only

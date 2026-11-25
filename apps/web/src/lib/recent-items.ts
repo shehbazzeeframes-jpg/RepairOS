@@ -49,7 +49,11 @@ export function addRecent(
   item: Omit<RecentItem, 'openedAt'>,
   now = new Date(),
 ): void {
-  write(userId, shopId, withRecent(readRecent(userId, shopId), { ...item, openedAt: now.toISOString() }));
+  write(
+    userId,
+    shopId,
+    withRecent(readRecent(userId, shopId), { ...item, openedAt: now.toISOString() }),
+  );
 }
 
 /** Drop an entry that now 404s. */

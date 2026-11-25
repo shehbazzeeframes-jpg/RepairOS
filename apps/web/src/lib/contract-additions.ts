@@ -45,13 +45,20 @@ export function fetchModelSuggestions(
   if (opts.type) params.set('type', opts.type);
   if (opts.brand?.trim()) params.set('brand', opts.brand.trim());
   params.set('limit', String(opts.limit ?? 8));
-  return apiFetch(`${DEVICE_ACTION_PATHS.modelSuggestions}?${params.toString()}`, ModelSuggestionsResponseR1, {
-    signal,
-  }).then((r) => r.items);
+  return apiFetch(
+    `${DEVICE_ACTION_PATHS.modelSuggestions}?${params.toString()}`,
+    ModelSuggestionsResponseR1,
+    {
+      signal,
+    },
+  ).then((r) => r.items);
 }
 
 /** Check-in customer search incl. archived customers (R5). The list API's page sizes start at 25. */
-export function searchCheckInCustomers(q: string, signal?: AbortSignal): Promise<CustomerListItem[]> {
+export function searchCheckInCustomers(
+  q: string,
+  signal?: AbortSignal,
+): Promise<CustomerListItem[]> {
   const params = new URLSearchParams({ q: q.trim(), archived: 'true', limit: '25' });
   return apiFetch(`${CUSTOMER_ACTION_PATHS.list}?${params.toString()}`, CustomerListResponse, {
     signal,

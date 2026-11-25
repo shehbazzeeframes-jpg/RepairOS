@@ -157,13 +157,26 @@ async function main() {
       `INSERT INTO ticket_issues (id, "shopId", "ticketId", code, label)
        SELECT 'perf_i_' || t.id, t."shopId", t.id, 'SCREEN_CRACKED', 'Screen cracked' FROM tickets t WHERE t."shopId" IN ('${PERF_SHOP_ID}', '${NOISE_SHOP_ID}')`,
     );
+    // Event data follows TicketEventDataByType (code review L3): created → Received, assigned → the assignee,
+    // then Received → Ready for pickup → the ticket's current status.
     await step(
       'ticket events',
-      `INSERT INTO ticket_events (id, "shopId", "ticketId", "actorUserId", type, data, "createdAt")
+      `WITH st AS (
+         SELECT "shopId", max(id) FILTER (WHERE "systemRole" = 'INITIAL') AS received,
+                max(id) FILTER (WHERE name = 'Ready for pickup') AS ready
+         FROM ticket_statuses GROUP BY "shopId")
+       INSERT INTO ticket_events (id, "shopId", "ticketId", "actorUserId", type, data, "createdAt")
        SELECT 'perf_e_' || t.id || '_' || k, t."shopId", t.id, 'perf_user_desk',
               (ARRAY['created','assigned','status_changed','status_changed'])[k]::"TicketEventType",
-              jsonb_build_object('statusId', t."statusId"), t."createdAt" + k * interval '1 hour'
-       FROM tickets t, generate_series(1, ${EVENTS_PER_TICKET}) k WHERE t."shopId" IN ('${PERF_SHOP_ID}', '${NOISE_SHOP_ID}')`,
+              CASE k
+                WHEN 1 THEN jsonb_build_object('statusId', st.received, 'warrantyOfTicketId', NULL)
+                WHEN 2 THEN jsonb_build_object('fromUserId', NULL, 'toUserId', t."assigneeUserId")
+                WHEN 3 THEN jsonb_build_object('fromStatusId', st.received, 'toStatusId', st.ready, 'notifyPending', false)
+                ELSE jsonb_build_object('fromStatusId', st.ready, 'toStatusId', t."statusId", 'notifyPending', false)
+              END,
+              t."createdAt" + k * interval '1 hour'
+       FROM tickets t JOIN st ON st."shopId" = t."shopId", generate_series(1, ${EVENTS_PER_TICKET}) k
+       WHERE t."shopId" IN ('${PERF_SHOP_ID}', '${NOISE_SHOP_ID}')`,
     );
     await step(
       'open ticket counts',

@@ -21,5 +21,17 @@
     "/api/search?q=t1201"
   ],
   "Dashboard": ["/api/dashboard"],
-  "Ticket counts": ["/api/tickets/counts"]
+  "Ticket counts": ["/api/tickets/counts"],
+  "Ticket detail (open / waiting / closed)": [
+    "/api/tickets/perf_t_99901",
+    "/api/tickets/perf_t_75002",
+    "/api/tickets/perf_t_99950",
+    "/api/tickets/perf_t_60010"
+  ],
+  "Ticket timeline (first page)": [
+    "/api/tickets/perf_t_99901/timeline",
+    "/api/tickets/perf_t_75002/timeline",
+    "/api/tickets/perf_t_99950/timeline",
+    "/api/tickets/perf_t_60010/timeline"
+  ]
 }

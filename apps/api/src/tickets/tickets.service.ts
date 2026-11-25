@@ -126,11 +126,7 @@ export class TicketsService {
     }
     return this.db(actor).tx(async (tx) => {
       const shop = await loadShopInfo(tx);
-      const input = new ZodValidationPipe(createTicketSchema(shop.country)).transform(body ?? {});
-      if ((input.newCustomer || input.newDevice || input.devicePasscode) && !hasPermission(actor.role, 'customers.manage')) {
-        throw forbidden(API_ERROR_MESSAGES.FORBIDDEN);
-      }
-
+      // A repeat is answered before the body is looked at (contracts: "the body is not compared").
       if (idempotencyKey) {
         const windowStart = new Date(now.getTime() - IDEMPOTENCY_WINDOW_MINUTES * 60_000);
         await tx.ticketIdempotencyKey.deleteMany({ where: { userId: actor.userId, key: idempotencyKey, createdAt: { lt: windowStart } } });
@@ -144,6 +140,11 @@ export class TicketsService {
           if (!prior?.ticketId) throw apiError('CONFLICT', undefined, 'This check-in is already being created.');
           return { ticket: await ticketDetail(tx, prior.ticketId, shop, now), created: false };
         }
+      }
+
+      const input = new ZodValidationPipe(createTicketSchema(shop.country)).transform(body ?? {});
+      if ((input.newCustomer || input.newDevice || input.devicePasscode) && !hasPermission(actor.role, 'customers.manage')) {
+        throw forbidden(API_ERROR_MESSAGES.FORBIDDEN);
       }
 
       // Customer

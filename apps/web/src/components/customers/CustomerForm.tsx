@@ -54,6 +54,7 @@ import { Controller, useFieldArray, useForm, type Resolver } from 'react-hook-fo
 import { FormTextArea, FormTextInput, errorStatus } from '@/components/form';
 import { apiFetch, isApiRequestError } from '@/lib/api';
 import { errorMessage, hasErrorCode } from '@/lib/errors';
+import { changedEntries, editedKeys, rebaseForm } from '@/lib/form-rebase';
 import { qk } from '@/lib/queries';
 import { useSession } from '@/lib/shop-context';
 import { customerPath, useCustomerTags } from '@/lib/sprint2-queries';
@@ -168,6 +169,33 @@ export function customerBody(v: CustomerFormValues) {
   };
 }
 
+/**
+ * PATCH body for an edit: the version the form was based on plus only the fields that differ from
+ * it (BUG-02), so a save never writes back a stale copy of a field someone else changed.
+ */
+export function customerPatch(
+  base: CustomerFormValues,
+  current: CustomerFormValues,
+  version: number,
+): Record<string, unknown> {
+  const { version: _b, ...before } = customerBody(base);
+  const { version: _c, ...after } = customerBody(current);
+  return { version, ...changedEntries(before, after) };
+}
+
+/** Reload after a version conflict: keep what this person edited, take the rest from the server. */
+export function reloadCustomerValues(
+  base: CustomerDetail,
+  current: CustomerFormValues,
+  fresh: CustomerDetail,
+  country: 'US' | 'GB' | 'PK',
+): CustomerFormValues {
+  const { version: _v, ...mine } = current;
+  const { version: _b, ...before } = formValuesFrom(base, country);
+  const { version: _f, ...after } = formValuesFrom(fresh, country);
+  return { ...rebaseForm(before, mine, after), version: fresh.version };
+}
+
 const FIELDS = [
   'kind',
   'firstName',
@@ -192,9 +220,12 @@ export function CustomerForm({ customer }: { customer: CustomerDetail | null }) 
   const showToast = useToast();
   const queryClient = useQueryClient();
   const isEdit = !!customer;
+  // The record the form was opened (or last reloaded) with: its version goes with the save and the
+  // save sends only what differs from it (BUG-02).
+  const [base, setBase] = useState<CustomerDetail | null>(customer);
   const tagsQuery = useCustomerTags();
   const [consents, setConsents] = useState<ConsentValue>(() =>
-    consentValueFrom(customer?.consent ?? null),
+    consentValueFrom(base?.consent ?? null),
   );
   const [stale, setStale] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
@@ -261,13 +292,19 @@ export function CustomerForm({ customer }: { customer: CustomerDetail | null }) 
 
   const onValid = () => {
     setShowErrors(true);
-    if (missingConsentSources(customer?.consent ?? null, consents).length) return;
-    const changes = consentChangesFrom(customer?.consent ?? null, consents);
-    const body = customerBody(getValues());
-    save.mutate({
-      ...body,
-      ...(isEdit ? (changes.length ? { consents: changes } : {}) : { consents: changes }),
-    });
+    if (missingConsentSources(base?.consent ?? null, consents).length) return;
+    const changes = consentChangesFrom(base?.consent ?? null, consents);
+    if (!base) {
+      save.mutate({ ...customerBody(getValues()), consents: changes });
+      return;
+    }
+    const patch = customerPatch(formValuesFrom(base, shop.country), getValues(), base.version);
+    if (changes.length) patch.consents = changes;
+    if (Object.keys(patch).length === 1) {
+      router.push(`/customers/${base.id}`);
+      return;
+    }
+    save.mutate(patch);
   };
 
   const setExclusive = (index: number, key: 'isPrimary' | 'isWhatsapp') => {
@@ -316,12 +353,29 @@ export function CustomerForm({ customer }: { customer: CustomerDetail | null }) 
                   label="Reload"
                   size="sm"
                   onClick={async () => {
+                    if (!base) return;
                     const fresh = await queryClient.fetchQuery({
-                      queryKey: qk.customer(shop.id, customer!.id),
-                      queryFn: () => apiFetch(customerPath('detail', customer!.id), CustomerDetail),
+                      queryKey: qk.customer(shop.id, base.id),
+                      queryFn: () => apiFetch(customerPath('detail', base.id), CustomerDetail),
                       staleTime: 0,
                     });
-                    setValue('version', fresh.version);
+                    if (!base) return;
+                    const merged = reloadCustomerValues(base, getValues(), fresh, shop.country);
+                    // The server's values become the baseline (not dirty); this person's edits
+                    // go back on top as dirty fields.
+                    const edited = editedKeys(formValuesFrom(base, shop.country), getValues());
+                    form.reset(formValuesFrom(fresh, shop.country));
+                    for (const k of edited) {
+                      if (k !== 'version') setValue(k, merged[k] as never, { shouldDirty: true });
+                    }
+                    setConsents((mine) =>
+                      rebaseForm(
+                        consentValueFrom(base.consent),
+                        mine,
+                        consentValueFrom(fresh.consent),
+                      ),
+                    );
+                    setBase(fresh);
                     setStale(false);
                     save.reset();
                   }}
@@ -526,7 +580,7 @@ export function CustomerForm({ customer }: { customer: CustomerDetail | null }) 
             <ConsentEditor
               value={consents}
               onChange={setConsents}
-              current={customer?.consent ?? null}
+              current={base?.consent ?? null}
               country={shop.country}
               showErrors={showErrors}
             />

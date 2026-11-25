@@ -702,7 +702,7 @@ export async function mockSprint2(page: Page, options: FakeOptions): Promise<Fak
     'PATCH /api/customers/:id': async (route, req) => {
       if (!(await guard(route, req))) return;
       const c = world.customers.find((x) => x.id === idOf(req))!;
-      const b = req.postDataJSON() as { version: number };
+      const b = req.postDataJSON() as { version: number } & Record<string, unknown>;
       if (b.version !== c.version)
         return json(
           route,
@@ -713,7 +713,13 @@ export async function mockSprint2(page: Page, options: FakeOptions): Promise<Fak
             'Someone else changed this customer. Reload to see their changes.',
           ),
         );
-      return json(route, 200, { ...c, version: c.version + 1 });
+      // Plain fields are stored, so two-tab tests can see each other's saves.
+      const plain = ['firstName', 'lastName', 'email', 'notes', 'city', 'postcode', 'tags'] as const;
+      const next = CustomerDetail.parse({ ...c, version: c.version + 1 });
+      for (const k of plain) if (k in b) Object.assign(next, { [k]: b[k] });
+      next.displayName = [next.firstName, next.lastName].filter(Boolean).join(' ') || c.displayName;
+      world.customers = world.customers.map((x) => (x.id === c.id ? next : x));
+      return json(route, 200, next);
     },
     'GET /api/customers/:id/devices': (route, req) =>
       json(route, 200, { items: world.devices.filter((d) => d.customerId === idOf(req)) }),
@@ -954,22 +960,19 @@ export async function mockSprint2(page: Page, options: FakeOptions): Promise<Fak
     'PATCH /api/tickets/:id': async (route, req) => {
       if (!(await guard(route, req))) return;
       const t = findTicket(idOf(req))!;
-      const b = req.postDataJSON() as { version: number; priority?: TicketDetail['priority'] };
+      const b = req.postDataJSON() as { version: number } & Record<string, unknown>;
       if (b.version !== t.version)
         return json(
           route,
           409,
           apiError(409, 'STALE_RECORD', 'This ticket changed since you opened it.'),
         );
-      return json(
-        route,
-        200,
-        replaceTicket({
-          ...t,
-          ...(b.priority ? { priority: b.priority } : {}),
-          version: t.version + 1,
-        }),
-      );
+      // Plain fields are stored, so two-tab tests can see each other's saves.
+      const plain = ['priority', 'description', 'conditionNotes', 'accessories'] as const;
+      const next: TicketDetail = { ...t, version: t.version + 1 };
+      for (const k of plain) if (k in b) Object.assign(next, { [k]: b[k] });
+      if (b.checklist) next.checklist = { ...t.checklist, ...(b.checklist as object) };
+      return json(route, 200, replaceTicket(TicketDetail.parse(next)));
     },
     'POST /api/tickets/:id/status': async (route, req) => {
       if (!(await guard(route, req))) return;

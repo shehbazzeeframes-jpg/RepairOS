@@ -12,6 +12,7 @@ import {
   checkInDraftKey,
   isValidImei,
   normalizeImei,
+  normalizePhone,
   parseMajorAmount,
   splitQuickCreateText,
   type AccessoryCode,
@@ -19,6 +20,7 @@ import {
   type ChecklistResult,
   type ConsentChannel,
   type ConsentSource,
+  type CountryCode,
   type CreateTicketInput,
   type CurrencyCode,
   type DeviceTypeValue,
@@ -355,6 +357,14 @@ export function firstEmptyQuickField(seed: QuickCustomerSeed): 'First name' | 'P
   if (!seed.firstName) return 'First name';
   if (!seed.phone) return 'Phone';
   return 'Email';
+}
+
+/** The contract's phone message (`createCustomerSchema` → phones.n.number). */
+export const PHONE_ERROR = 'Enter a valid phone number';
+
+/** Field message for a phone input (contract copy), null when empty or valid (CU1.2, BUG-01). */
+export function phoneError(raw: string, country: CountryCode): string | null {
+  return raw.trim() && !normalizePhone(raw, country) ? PHONE_ERROR : null;
 }
 
 /** Field message for the IMEI input (contract copy), null when empty or valid. */

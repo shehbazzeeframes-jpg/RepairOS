@@ -42,11 +42,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { EMPTY_LOCK, imeiError, passcodeOf, type LockDraft } from '@/lib/check-in';
-import { fetchModelSuggestions } from '@/lib/contract-additions';
 import { errorMessage } from '@/lib/errors';
 import { qk } from '@/lib/queries';
 import { useSession } from '@/lib/shop-context';
-import { customerPath } from '@/lib/sprint2-queries';
+import { customerPath, fetchModelSuggestions } from '@/lib/sprint2-queries';
 import { LockFields, lockProblem } from './LockFields';
 
 type Item = {
@@ -96,6 +95,8 @@ export function DeviceDialog({
       : EMPTY_LOCK,
   );
   const [tried, setTried] = useState(false);
+  // Fields the person has typed in and left: their errors show from then on (spec §5 "on blur", BUG-04).
+  const [blurred, setBlurred] = useState<{ imei?: boolean; serial?: boolean }>({});
 
   const brand = brandChoice === OTHER_BRAND ? brandOther.trim() : brandChoice;
   const hasImei = IMEI_DEVICE_TYPES.includes(type);
@@ -120,7 +121,7 @@ export function DeviceDialog({
     () => ({
       bootstrap: () => [] as Item[],
       search: async (q: string): Promise<Item[]> => {
-        const items = await fetchModelSuggestions({ q, type, brand: brand || null }).catch(
+        const items = await fetchModelSuggestions({ q, type, brand: brand || undefined }).catch(
           () => [],
         );
         return [
@@ -297,8 +298,9 @@ export function DeviceDialog({
                   description="Scan it, or dial *#06#"
                   value={imei}
                   onChange={setImei}
+                  onBlur={() => imei.trim() && setBlurred((b) => ({ ...b, imei: true }))}
                   status={
-                    imeiProblem && (tried || normalizeImei(imei).length >= 15)
+                    imeiProblem && (tried || blurred.imei || normalizeImei(imei).length >= 15)
                       ? { type: 'error', message: imeiProblem }
                       : undefined
                   }
@@ -309,8 +311,11 @@ export function DeviceDialog({
                 isOptional
                 value={serial}
                 onChange={setSerial}
+                onBlur={() => serial.trim() && setBlurred((b) => ({ ...b, serial: true }))}
                 status={
-                  serialProblem && tried ? { type: 'error', message: serialProblem } : undefined
+                  serialProblem && (tried || blurred.serial)
+                    ? { type: 'error', message: serialProblem }
+                    : undefined
                 }
               />
             </Grid>

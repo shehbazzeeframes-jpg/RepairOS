@@ -99,18 +99,20 @@ describe('DueChip', () => {
         />,
       ),
     ).toContain('Fri, 27 Nov 2026');
-    expect(
-      render(
-        <DueChip
-          dueAt="2026-11-24T18:00:00Z"
-          hasTime={false}
-          category="OPEN"
-          shop={UK}
-          now={NOW}
-          format="absolute"
-        />,
-      ),
-    ).toContain('1 day overdue · Tue, 24 Nov 2026');
+    const overdue = render(
+      <DueChip
+        dueAt="2026-11-24T18:00:00Z"
+        hasTime={false}
+        category="OPEN"
+        shop={UK}
+        now={NOW}
+        format="absolute"
+      />,
+    );
+    expect(overdue).toContain('1 day overdue');
+    expect(overdue).toContain('Tue, 24 Nov 2026');
+    // BUG-05: the date is outside the one-line badge, so it can wrap instead of being cut off.
+    expect(overdue).not.toMatch(/overdue[^<]*24 Nov/);
   });
 
   it('never shows ready tickets as overdue', () => {

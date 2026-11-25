@@ -85,6 +85,7 @@ import {
   type DeviceTypeValue,
   type DuplicateMatch,
   type IssueCode,
+  type SearchCustomerResult,
   type TicketPriority,
 } from '@repairos/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -109,6 +110,7 @@ import {
   firstEmptyQuickField,
   imeiError,
   isWorthDrafting,
+  phoneError,
   looksLikeImei,
   newIdempotencyKey,
   readDraft,
@@ -120,17 +122,15 @@ import {
   type LockDraft,
   type NewDeviceDraft,
 } from '@/lib/check-in';
-import {
-  fetchModelSuggestions,
-  searchCheckInCustomers,
-  type ModelSuggestionR1,
-} from '@/lib/contract-additions';
 import { errorCode, errorMessage } from '@/lib/errors';
 import { focusField, focusIn, isTypingTarget } from '@/lib/focus';
 import { qk } from '@/lib/queries';
 import { useSession } from '@/lib/shop-context';
 import {
   customerPath,
+  fetchModelSuggestions,
+  searchCheckInCustomers,
+  type ModelSuggestion,
   useAssignees,
   useCheckInContext,
   useCustomer,
@@ -143,7 +143,7 @@ import { formatDateTime, formatLocalDate, todayInZone } from '@/lib/timezone';
 type CustomerItem = {
   id: string;
   label: string;
-  auxiliaryData: { customer?: CustomerListItem; match?: DeviceLookupMatch; isNew?: boolean };
+  auxiliaryData: { customer?: SearchCustomerResult; match?: DeviceLookupMatch; isNew?: boolean };
 };
 
 type ModelItem = {
@@ -159,7 +159,9 @@ const CURRENCY_PREFIX = { GBP: '£', USD: '$', PKR: 'Rs' } as const;
 const byLastTicket = (a: Device, b: Device) =>
   (b.lastTicketAt ?? '').localeCompare(a.lastTicketAt ?? '');
 
-const pickFromListItem = (c: CustomerListItem): CustomerPick => ({
+const pickFromListItem = (
+  c: Pick<CustomerListItem, 'id' | 'displayName' | 'primaryPhone' | 'email' | 'archivedAt'>,
+): CustomerPick => ({
   id: c.id,
   displayName: c.displayName,
   primaryPhone: c.primaryPhone,
@@ -279,7 +281,26 @@ export function CheckInPage({ prefill }: { prefill: CheckInPrefill }) {
 
   let initial: Partial<CheckInState> | null = null;
   let warrantyLabel: string | null = null;
-  if (warranty.data) {
+  let warrantyWarning: string | null = null;
+  if (warranty.data && warranty.data.status.systemRole !== 'COLLECTED') {
+    // M2: only a collected ticket can have a warranty ticket. Say so now, not at Create, and start a
+    // normal check-in for the same customer and device instead.
+    const t = warranty.data;
+    warrantyWarning = `${t.numberLabel} hasn't been collected, so this can't be a warranty ticket. This is a normal check-in for the same device.`;
+    initial = {
+      customer: {
+        id: t.customer.id,
+        displayName: t.customer.displayName,
+        primaryPhone: t.customer.phones.find((p) => p.isPrimary)?.e164 ?? null,
+        email: t.customer.email,
+        archived: t.customer.archived,
+      },
+      customerDone: true,
+      deviceChoice: t.device.id,
+      device: devicePick(t.device),
+      deviceDone: true,
+    };
+  } else if (warranty.data) {
     const t = warranty.data;
     warrantyLabel = t.numberLabel;
     initial = {
@@ -310,6 +331,7 @@ export function CheckInPage({ prefill }: { prefill: CheckInPrefill }) {
       key={JSON.stringify(prefill)}
       initial={initial}
       warrantyLabel={warrantyLabel}
+      warrantyWarning={warrantyWarning}
       prefillError={warranty.error ?? customer.error ?? null}
     />
   );
@@ -320,10 +342,12 @@ export function CheckInPage({ prefill }: { prefill: CheckInPrefill }) {
 function CheckInForm({
   initial,
   warrantyLabel,
+  warrantyWarning,
   prefillError,
 }: {
   initial: Partial<CheckInState> | null;
   warrantyLabel: string | null;
+  warrantyWarning: string | null;
   prefillError: unknown;
 }) {
   const { me, shop } = useSession();
@@ -332,7 +356,10 @@ function CheckInForm({
   const showToast = useToast();
   const queryClient = useQueryClient();
   const canManageCustomers = can('customers.manage');
-  const isWarranty = !!warrantyLabel;
+  // A warranty check-in is locked to the original's customer and device (M2). If the API still
+  // refuses the link, staff can drop it and create a normal ticket.
+  const [warrantyDropped, setWarrantyDropped] = useState(false);
+  const isWarranty = !!warrantyLabel && !warrantyDropped;
 
   const ctxQuery = useCheckInContext();
   const ctx: CheckInContext | undefined = ctxQuery.data;
@@ -363,6 +390,9 @@ function CheckInForm({
   );
   const [issueFilter, setIssueFilter] = useState('');
   const [showErrors, setShowErrors] = useState(false);
+  // Fields the person has typed in and left: their errors show from then on (spec §2.3 "on blur",
+  // BUG-01/04). Focus passing through an empty field doesn't count.
+  const [blurred, setBlurred] = useState<{ phone?: boolean; imei?: boolean }>({});
   const [serverIssues, setServerIssues] = useState<Record<string, string>>({});
   const [showTime, setShowTime] = useState(!!state.dueTime);
   const [restoredNotice, setRestoredNotice] = useState(false);
@@ -418,6 +448,7 @@ function CheckInForm({
   const deviceType: DeviceTypeValue = devicePickNow?.type ?? (isNewDevice ? nd.type : 'PHONE');
   const checklistItems = CHECKLIST_ITEMS_BY_DEVICE_TYPE[deviceType];
   const nc = state.newCustomer;
+  const phoneProblem = nc ? phoneError(nc.phone, ctx?.country ?? shop.country) : null;
   const customerName = state.customer
     ? state.customer.displayName
     : nc
@@ -629,6 +660,12 @@ function CheckInForm({
       setShowErrors(true);
       return;
     }
+    if (phoneError(nc.phone, ctx?.country ?? shop.country)) {
+      // An invalid number would only fail at Create (BUG-01): stop here, on the field.
+      setBlurred((b) => ({ ...b, phone: true }));
+      focusField(customerRef.current, 'Phone');
+      return;
+    }
     set({ customerDone: true });
     focusField(deviceRef.current, 'Model');
   };
@@ -798,7 +835,7 @@ function CheckInForm({
         ctl.current?.abort();
         const controller = new AbortController();
         ctl.current = controller;
-        const items: ModelSuggestionR1[] = await fetchModelSuggestions(
+        const items: ModelSuggestion[] = await fetchModelSuggestions(
           { q },
           controller.signal,
         ).catch(() => []);
@@ -845,7 +882,7 @@ function CheckInForm({
           <Heading level={1} id="checkin-title">
             New ticket
           </Heading>
-          {warrantyLabel ? <Badge label={`Warranty for ${warrantyLabel}`} variant="info" /> : null}
+          {isWarranty ? <Badge label={`Warranty for ${warrantyLabel}`} variant="info" /> : null}
         </HStack>
         <ShortcutHints
           label="Check-in shortcuts"
@@ -870,6 +907,7 @@ function CheckInForm({
           endContent={<Button label="Discard" size="sm" onClick={discardDraft} />}
         />
       ) : null}
+      {warrantyWarning ? <Banner status="warning" title={warrantyWarning} /> : null}
       {prefillError ? (
         <Banner
           status="error"
@@ -944,8 +982,9 @@ function CheckInForm({
                     item={item}
                     description={[
                       c.archivedAt ? 'Archived · Restore and use' : null,
-                      c.primaryPhone ? formatPhone(c.primaryPhone, shop.country) : (c.email ?? null),
-                      c.openTicketCount ? `${c.openTicketCount} open` : null,
+                      c.primaryPhone
+                        ? formatPhone(c.primaryPhone, shop.country)
+                        : (c.email ?? null),
                     ]
                       .filter(Boolean)
                       .join(' · ')}
@@ -992,18 +1031,22 @@ function CheckInForm({
                 inputMode="tel"
                 value={nc.phone}
                 onChange={(v) => set({ newCustomer: { ...nc, phone: v } })}
+                onBlur={() => nc.phone.trim() && setBlurred((b) => ({ ...b, phone: true }))}
                 onEnter={confirmNewCustomer}
                 description="Mobile, for repair updates"
                 status={
                   field('newCustomer.phones.0.number')
                     ? { type: 'error', message: field('newCustomer.phones.0.number') }
-                    : (showErrors && !nc.phone.trim() && !nc.email.trim()) ||
-                        field('newCustomer.phones')
-                      ? {
-                          type: 'error',
-                          message: field('newCustomer.phones') ?? 'Add a phone number or an email',
-                        }
-                      : undefined
+                    : phoneProblem && (blurred.phone || showErrors)
+                      ? { type: 'error', message: phoneProblem }
+                      : (showErrors && !nc.phone.trim() && !nc.email.trim()) ||
+                          field('newCustomer.phones')
+                        ? {
+                            type: 'error',
+                            message:
+                              field('newCustomer.phones') ?? 'Add a phone number or an email',
+                          }
+                        : undefined
                 }
               />
               <TextInput
@@ -1139,6 +1182,11 @@ function CheckInForm({
         }
         sectionRef={deviceRef}
       >
+        {isWarranty && state.deviceDone ? (
+          <Text type="supporting" color="secondary">
+            {`A warranty ticket is for the same device as ${warrantyLabel}.`}
+          </Text>
+        ) : null}
         {!state.customerDone && !nc ? (
           <Text color="secondary">Choose the customer first. Their devices show here.</Text>
         ) : null}
@@ -1296,6 +1344,7 @@ function CheckInForm({
                   description="Scan it, or dial *#06#"
                   value={nd.imei}
                   onChange={(imei) => setNewDevice({ imei })}
+                  onBlur={() => nd.imei.trim() && setBlurred((b) => ({ ...b, imei: true }))}
                   // A scanner ends with Enter: move on to Lock instead of submitting.
                   onEnter={() =>
                     focusIn(
@@ -1306,7 +1355,8 @@ function CheckInForm({
                   status={
                     field('newDevice.imei')
                       ? { type: 'error', message: field('newDevice.imei') }
-                      : imeiProblem && (showErrors || nd.imei.replace(/\D/g, '').length >= 15)
+                      : imeiProblem &&
+                          (showErrors || blurred.imei || nd.imei.replace(/\D/g, '').length >= 15)
                         ? { type: 'error', message: imeiProblem }
                         : undefined
                   }
@@ -1676,15 +1726,31 @@ function CheckInForm({
               title={
                 errorCode(create.error) === 'ACTIVE_SHOP_CHANGED'
                   ? `You switched shop in another tab. This check-in is kept for ${shop.name}.`
-                  : "Couldn't create the ticket"
+                  : errorCode(create.error) === 'WARRANTY_NOT_ALLOWED'
+                    ? "Couldn't create the warranty ticket"
+                    : "Couldn't create the ticket"
               }
               description={
                 errorCode(create.error) === 'ACTIVE_SHOP_CHANGED'
                   ? undefined
-                  : errorMessage(create.error)
+                  : errorCode(create.error) === 'WARRANTY_NOT_ALLOWED' &&
+                      isApiRequestError(create.error)
+                    ? // The API says why (not collected, another device); show its words.
+                      create.error.body.message || errorMessage(create.error)
+                    : errorMessage(create.error)
               }
               endContent={
-                errorCode(create.error) === 'CUSTOMER_ARCHIVED' && state.customer ? (
+                errorCode(create.error) === 'WARRANTY_NOT_ALLOWED' ? (
+                  <Button
+                    label="Create without the warranty link"
+                    size="sm"
+                    onClick={() => {
+                      set({ warrantyOfTicketId: null });
+                      setWarrantyDropped(true);
+                      create.reset();
+                    }}
+                  />
+                ) : errorCode(create.error) === 'CUSTOMER_ARCHIVED' && state.customer ? (
                   <Button
                     label="Restore and use"
                     size="sm"

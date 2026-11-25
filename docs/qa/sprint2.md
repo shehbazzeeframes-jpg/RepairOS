@@ -24,7 +24,7 @@ Last full run (Sprint 1 + 2, fresh reset, `REAL_API_LOG` set): **125 tests, all 
 
 Known bugs are marked `test.fail(true, 'BUG-xx …')` and known open items (already with the backend engineer) `test.fail(true, 'KNOWN (open item) …')`. The suite stays green while they are present; Playwright reports "expected to fail but passed" once fixed, so remove the marker then.
 
-**No blockers.** One major bug (BUG-02, silent lost update after a version conflict) and four minor ones. All five known open items reproduce on `main` (see "Known open items").
+**No blockers.** One major bug (BUG-02, silent lost update after a version conflict) and four minor ones. All five known open items reproduce on `main` (see "Known open items"). **All five bugs and the four testable known items are fixed; see "Retest after fixes".**
 
 ## Check-in timings (TK1.11, TK2.4, DoD)
 
@@ -63,7 +63,7 @@ The suite is serial (`workers: 1`). Global setup truncates and re-seeds the data
 
 ## Bugs (ranked)
 
-### BUG-02: After a version conflict, "Reload" keeps stale copies of fields the user never touched, and the next save silently overwrites the other person's change (major)
+### BUG-02: After a version conflict, "Reload" keeps stale copies of fields the user never touched, and the next save silently overwrites the other person's change (major) — **Fixed** (see Retest after fixes)
 
 TE1.4 / screen spec §0.2: on `STALE_RECORD` "keep the user's input … Reload (refetch, form keeps values where unchanged)". The point of the version check is to stop lost updates; this path re-introduces them.
 
@@ -73,7 +73,7 @@ TE1.4 / screen spec §0.2: on `STALE_RECORD` "keep the user's input … Reload (
 - **Evidence:** `TD-09` in `e2e/real/15-ticket-detail.real.ts` (expected fail; the final `toMatchObject` shows `conditionNotes: null`). Screenshot `docs/qa/sprint2/td-09-stale.png`.
 - **Suggested fix area (web):** on Reload, rebuild the form from the new ticket and re-apply only the fields the user changed (dirty fields), and diff against the new ticket.
 
-### BUG-01: An invalid phone is not flagged when leaving the field; in check-in it even passes "Use this customer" and only fails at Create (minor)
+### BUG-01: An invalid phone is not flagged when leaving the field; in check-in it even passes "Use this customer" and only fails at Create (minor) — **Fixed** (see Retest after fixes)
 
 CU1.2: "When I leave the field, Then it is validated … An invalid number shows 'Enter a valid phone number' and blocks save." Screen spec §2.3: phone error "on blur".
 
@@ -82,7 +82,7 @@ CU1.2: "When I leave the field, Then it is validated … An invalid number shows
 - **Actual:** the Customer section collapses as **Done** ("Bad Phone (new)") and focus moves to Model. The error only appears after the whole check-in is filled in and ⌘↵ returns 400, which costs the person the time the 60-second target is about. Same on `/customers/new` and edit: no error on blur, only on Save (save is correctly blocked).
 - **Evidence:** `CI-09` (`13-checkin.real.ts`) and `CU-02b` (`17-customers.real.ts`), both expected-fail. Screenshot `docs/qa/sprint2/ci-09-invalid-phone-accepted.png`.
 
-### BUG-03: Customer list filters and search use history replace, so Back leaves the page instead of undoing a filter (minor)
+### BUG-03: Customer list filters and search use history replace, so Back leaves the page instead of undoing a filter (minor) — **Fixed** (see Retest after fixes)
 
 CU5.5: "Filters, search and sort live in the URL (shareable, back button works)."
 
@@ -91,7 +91,7 @@ CU5.5: "Filters, search and sort live in the URL (shareable, back button works).
 - **Actual:** back to the dashboard (`/`); every list change replaced the history entry. The ticket list behaves the same (TL1.4 only says "in the URL", so it isn't filed there).
 - **Evidence:** `CU-05b` (`17-customers.real.ts`), annotation `after Back: http://localhost:3900/`.
 
-### BUG-04: A 14-digit IMEI shows no error on blur in the device dialog (minor)
+### BUG-04: A 14-digit IMEI shows no error on blur in the device dialog (minor) — **Fixed** (see Retest after fixes)
 
 Screen spec §5: IMEI error `IMEI_ERROR` + `IMEI_LENGTH_HINT` "once 15+ digits or on blur". DV2.2.
 
@@ -100,7 +100,7 @@ Screen spec §5: IMEI error `IMEI_ERROR` + `IMEI_LENGTH_HINT` "once 15+ digits o
 - **Actual:** nothing until "Add device" is pressed (then the error shows and save is blocked; the API also rejects bad IMEIs).
 - **Evidence:** `CU-10b` (expected fail); `CU-10` annotation `14-digit IMEI error shown on blur: false`.
 
-### BUG-05: Ticket list cuts off status names and assignee names, including the "(deactivated)" marker, even at 1440 (minor)
+### BUG-05: Ticket list cuts off status names and assignee names, including the "(deactivated)" marker, even at 1440 (minor) — **Fixed** (see Retest after fixes)
 
 - **Steps:** owner@demo.test, Tickets, at 1440×900 (and 1024×768).
 - **Expected:** status badges ("Ready for pickup", "Awaiting approval") readable; a deactivated assignee shows "Fred Former (deactivated)" (AS1.2) so the reader knows the ticket needs picking up.
@@ -252,6 +252,29 @@ Status: **Pass**, **Fail (BUG-x / KNOWN)**, **Partial** (part covered here, rest
 | axe (WCAG 2.1 A/AA) on every new page and dialog               | 22 targets: dashboard, ticket list, detail (open + closed), status menu, cancel/edit/assign dialogs, check-in (empty + new customer/device/pattern/checklist), customer list/detail (3 tabs)/new/edit, add-device and erase dialogs, statuses (+ add dialog), ticket settings, search palette | A11Y-S2 (+ per-test axe)       | Pass, 0 violations |
 | 1024 and 1440: no horizontal scroll; ticket detail two columns | 15 pages at each width                                                                                                                                                                                                                                                                        | LAYOUT-S2-1024, LAYOUT-S2-1440 | Pass               |
 | Readable at 1024/1440                                          | Status and names in ticket list                                                                                                                                                                                                                                                               | LAYOUT-S2-badges               | **Fail (BUG-05)**  |
+
+## Retest after fixes (2026-11-25, fix/sprint2-web with main fc5c973 merged)
+
+Real-stack suite against `fix/sprint2-web` with `main` at fc5c973 merged (backend review fixes and the race fixes, migration `20261204090000_lock_order` applied), fresh reset, `REAL_API_LOG` set, all `test.fail` markers for BUG-01..05 and the four "KNOWN (open item)" markers removed: **125 passed, 0 failed, 0 skipped** (Sprint 1 + 2) in 6.4 min. Stack as in "How to run", on API 5100 / web 5101, databases `repairos_s2wfix(_test)`, Redis DB 7.
+
+409 `CONFLICT` (a ticket write still racing after the API's retries) has no contract copy, so every screen shows the API's own message (`errorMessage` falls back to it); covered by a unit test and a mocked status-change + Edit details test in `tickets.spec.ts`.
+
+| Bug / item | Status | Fixed in |
+| --- | --- | --- |
+| BUG-02 Reload after a version conflict overwrote a colleague's change | **Fixed**: TD-09 passes (A's condition notes survive B's save) | fix/sprint2-web: Edit details and the customer form keep a baseline; Reload keeps only the fields the person edited and takes the rest from the server; saves send only real changes with the baseline's version (the customer form used to PATCH every field). Device dialog and ticket settings have no `version` in their contracts. Mocked: `fix-conflict.spec.ts` (two browser contexts) |
+| BUG-01 invalid phone not flagged on blur | **Fixed**: CI-09, CU-02b pass | fix/sprint2-web: check-in quick form flags it on blur and "Use this customer" / ↵ stay on the field; customer form validates each phone on blur. Mocked: `fix-validation.spec.ts` |
+| BUG-03 Back left the list instead of undoing a filter | **Fixed**: CU-05b passes | fix/sprint2-web: customer and ticket lists push a history entry per filter/view change; the search box makes one entry per search (debounced; later typing in the same search replaces it); Back restores the box. Mocked: `fix-history.spec.ts` |
+| BUG-04 14-digit IMEI not flagged on blur | **Fixed**: CU-10b passes | fix/sprint2-web: device dialog (IMEI, serial) and check-in new device flag on blur. Mocked: `fix-validation.spec.ts` |
+| BUG-05 status/assignee cut off in the ticket list; Due cut in Details at 1024 | **Fixed**: LAYOUT-S2-badges, LAYOUT-S2-1024/1440 pass | fix/sprint2-web: status column sized to the longest status name, columns weighted by their floors (no table scroll at 1440), names wrap, "(deactivated)" always shown; the overdue date sits next to its badge. Screenshots re-taken (`bug-05-truncated-status-1440.png` now shows the fixed list, `layout-*`). Mocked: `fix-layout.spec.ts` |
+| KNOWN M2 warranty for another device/customer | **Fixed**: TD-06b passes (409 `WARRANTY_NOT_ALLOWED`) | main (backend). Web: warranty check-in keeps customer and device locked and says why, warns up front if the original wasn't collected, and shows the API's message with "Create without the warranty link" if refused (`fix-warranty.spec.ts`) |
+| KNOWN passcode not deleted on concurrent close | **Fixed**: PC-07 passes (5/5 deleted) | main (backend) |
+| KNOWN export missing internal notes (A11-c) | **Fixed**: CU-07b passes | main (backend) |
+| KNOWN erase leaves identifiers in free text (A11-b) | **Fixed**: CU-09 passes | main (backend) |
+| Flaky mocked test "customer list: search, archived switch, open a customer" | **Fixed**: 30/30 with `--repeat-each=30`, no retries | fix/sprint2-web: Clear filters reset the search box, which scheduled a debounced commit built from the filters captured before the clear; ~250 ms later it navigated back to `?archived=true`, undoing the clear and racing the click on the customer link. Clear now cancels the pending commit. Deterministic regression in `fix-history.spec.ts` |
+
+Test-only change found in the retest: TD-03 read the ticket right after the optimistic "Closed" text appeared, so it raced the API (it expected the optimistic-only text "Closed. Notes can still be added."). It now accepts either closed text and polls the API for `COLLECTED`.
+
+`openTicketCount` drift on concurrent close was still not measured separately (PC-07 exercises the same path and passes).
 
 ## What wasn't tested, and why
 

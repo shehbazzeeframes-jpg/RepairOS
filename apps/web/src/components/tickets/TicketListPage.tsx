@@ -64,6 +64,7 @@ import {
 } from '@/lib/list-params';
 import { qk } from '@/lib/queries';
 import { useSession } from '@/lib/shop-context';
+import { useUrlSearch, type HistoryMode } from '@/lib/use-url-search';
 import {
   useAssignees,
   useTicketCounts,
@@ -150,21 +151,20 @@ export function TicketListPage() {
   const assignees = useAssignees();
   const changer = useStatusChanger();
 
-  const [search, setSearch] = useState(filters.q);
   const searchRef = useRef<HTMLElement>(null);
-  const navigate = (next: TicketFilters) => {
+  // Every view and filter change is a history entry, so Back undoes it (TL1.4, BUG-03).
+  const navigate = (next: TicketFilters, mode: HistoryMode = 'push') => {
     const qs = ticketFiltersToUrl(next);
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    if (qs === urlKey && sp.has('view')) return;
+    router[mode](qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
   const update = (patch: Partial<TicketFilters>) => navigate({ ...filters, ...patch });
-
-  // Search box → URL after the debounce.
-  useEffect(() => {
-    if (search === filters.q) return;
-    const t = window.setTimeout(() => update({ q: search }), LIST_SEARCH_DEBOUNCE_MS);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  // Search box → URL after the debounce: one history entry per search.
+  const search = useUrlSearch(
+    filters.q,
+    (q, mode) => navigate({ ...filters, q }, mode),
+    LIST_SEARCH_DEBOUNCE_MS,
+  );
 
   // "/" focuses this page's search (page search wins over the palette, §0.3).
   useEffect(() => {
@@ -288,8 +288,9 @@ export function TicketListPage() {
               isLabelHidden
               placeholder="Search #, customer, phone, IMEI…"
               startIcon="search"
-              value={search}
-              onChange={setSearch}
+              value={search.value}
+              onChange={search.onChange}
+              onBlur={search.onBlur}
               width={280}
             />
           </VStack>
@@ -388,7 +389,7 @@ export function TicketListPage() {
               variant="ghost"
               size="sm"
               onClick={() => {
-                setSearch('');
+                search.reset('');
                 navigate(clearTicketFilters(filters));
               }}
             />
@@ -443,7 +444,7 @@ export function TicketListPage() {
                     <Button
                       label="Clear filters"
                       onClick={() => {
-                        setSearch('');
+                        search.reset('');
                         navigate(clearTicketFilters(filters));
                       }}
                     />

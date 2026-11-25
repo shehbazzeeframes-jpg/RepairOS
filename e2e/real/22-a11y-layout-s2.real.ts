@@ -186,10 +186,6 @@ test('A11Y-S2 axe on every Sprint 2 page and dialog (owner, seed US shop, 1440)'
 test('LAYOUT-S2-badges status names and assignee names (incl. "(deactivated)") are not cut off in the ticket list at 1440', async ({
   page,
 }) => {
-  test.fail(
-    true,
-    'BUG-05: status badges and assignee names are ellipsised in the ticket list even at 1440 ("Ready for pic…", "Fred Former…")',
-  );
   await signInContext(page, SEED.owner);
   await page.goto('/tickets');
   await expect(page.getByText(/Showing 1–/)).toBeVisible();

@@ -3,6 +3,7 @@ import {
   createCustomerSchema,
   permissionsFor,
   type ConsentSummary,
+  type CustomerDetail,
 } from '@repairos/contracts';
 import { describe, expect, it } from 'vitest';
 import { searchItems } from './CommandSearch';
@@ -11,10 +12,16 @@ import {
   consentValueFrom,
   missingConsentSources,
 } from './customers/ConsentEditor';
-import { customerBody, formValuesFrom } from './customers/CustomerForm';
+import {
+  customerBody,
+  customerPatch,
+  formValuesFrom,
+  reloadCustomerValues,
+} from './customers/CustomerForm';
 import { lockProblem } from './devices/LockFields';
 import { moveId } from './settings/TicketStatusesPage';
 import { collectBlockedReason, statusMenuTargets } from './tickets/status-change';
+import { statusColumnMinWidth } from './tickets/TicketTable';
 
 const none = { granted: false, since: null, source: null, recordedByName: null };
 const SMS_ON: ConsentSummary = {
@@ -62,6 +69,72 @@ describe('customer form body', () => {
     expect(body.phones[1]).toMatchObject({ label: 'LANDLINE', isWhatsapp: false });
     expect(body.businessName).toBeNull();
     expect(createCustomerSchema('GB').safeParse(body).success).toBe(true);
+  });
+});
+
+describe('customer edit after a version conflict (BUG-02)', () => {
+  // Only the fields the form reads.
+  const ali = {
+    id: 'cus_1',
+    version: 4,
+    kind: 'PERSON',
+    displayName: 'Ali Khan',
+    firstName: 'Ali',
+    lastName: 'Khan',
+    businessName: null,
+    businessContactName: null,
+    email: null,
+    primaryPhone: '+447400123456',
+    phones: [{ id: 'ph_1', e164: '+447400123456', label: 'MOBILE', isPrimary: true, position: 0 }],
+    whatsappPhoneId: 'ph_1',
+    preferredChannel: 'SMS',
+    serviceOptOutSms: false,
+    serviceOptOutEmail: false,
+    serviceOptOutWhatsapp: false,
+    tags: [],
+    addressLine1: null,
+    addressLine2: null,
+    city: null,
+    region: null,
+    postcode: null,
+    notes: null,
+    consent: { SMS: none, EMAIL: none, WHATSAPP: none },
+    openTicketCount: 0,
+    ticketCount: 0,
+    deviceCount: 0,
+    lastVisitAt: null,
+    archivedAt: null,
+    erasedAt: null,
+    createdAt: '2026-01-10T10:00:00.000Z',
+    updatedAt: '2026-01-10T10:00:00.000Z',
+  } as unknown as CustomerDetail;
+
+  it('sends only the changed fields with the base version', () => {
+    const v = formValuesFrom(ali, 'GB');
+    v.lastName = 'Khan-Smith';
+    expect(customerPatch(formValuesFrom(ali, 'GB'), v, ali.version)).toEqual({
+      version: 4,
+      lastName: 'Khan-Smith',
+    });
+  });
+
+  it('Reload keeps my edit and takes the colleague’s note', () => {
+    const mine = formValuesFrom(ali, 'GB');
+    mine.lastName = 'Khan-Smith';
+    const fresh = { ...ali, version: 5, notes: 'Prefers a call' };
+    const merged = reloadCustomerValues(ali, mine, fresh, 'GB');
+    expect(merged).toMatchObject({ version: 5, lastName: 'Khan-Smith', notes: 'Prefers a call' });
+    expect(customerPatch(formValuesFrom(fresh, 'GB'), merged, 5)).toEqual({
+      version: 5,
+      lastName: 'Khan-Smith',
+    });
+  });
+});
+
+describe('ticket list status column (BUG-05)', () => {
+  it('is wide enough for the longest status name', () => {
+    expect(statusColumnMinWidth(['Received'])).toBe(120);
+    expect(statusColumnMinWidth(['Received', 'Awaiting approval'])).toBe(154);
   });
 });
 

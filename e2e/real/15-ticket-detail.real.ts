@@ -121,9 +121,16 @@ test('TD-03 Collected only from ready, only with tickets.cancel; confirm lists t
   ).toBeVisible();
   await page.screenshot({ path: shot2('td-03-collect-confirm') });
   await confirm.getByRole('button', { name: 'Mark collected' }).click();
-  await expect(page.getByText('Closed. Notes can still be added.')).toBeVisible();
+  // The status change is optimistic: "Closed. Notes can still be added." shows until the API
+  // answers, then "Closed. You can reopen it until …" (closedAt known). Accept either, and wait for
+  // the server's state rather than reading it once (both raced in the fix retest).
+  await expect(
+    page.getByText(/^Closed\. (Notes can still be added|You can reopen it until)/),
+  ).toBeVisible();
+  await expect
+    .poll(async () => (await ok(fd.ctx, 'GET', `/api/tickets/${t.id}`)).status.systemRole)
+    .toBe('COLLECTED');
   const after = await ok(fd.ctx, 'GET', `/api/tickets/${t.id}`);
-  expect(after.status.systemRole).toBe('COLLECTED');
   expect(after.closedAt).toBeTruthy();
   expect(after.device.passcodeOnFile).toBe(false);
   const tl = await ok(fd.ctx, 'GET', `/api/tickets/${t.id}/timeline?filter=all`);
@@ -292,7 +299,6 @@ test('TD-06 warranty ticket from a Collected ticket: prefilled check-in, links b
 });
 
 test('TD-06b M2: a warranty ticket must be for the same device (and so the same customer)', async () => {
-  test.fail(true, 'KNOWN (open item, M2): warranty accepts another device / another customer');
   const t = await ticket();
   await ok(fd.ctx, 'POST', `/api/tickets/${t.id}/status`, {
     statusId: s.statuses['Ready for pickup'].id,
@@ -316,12 +322,10 @@ test('TD-06b M2: a warranty ticket must be for the same device (and so the same 
     issues: [{ code: 'BATTERY' }],
     warrantyOfTicketId: t.id,
   });
-  test
-    .info()
-    .annotations.push({
-      type: 'observed',
-      description: `other device: ${sameCustomer.status}; other customer: ${otherCustomer.status}`,
-    });
+  test.info().annotations.push({
+    type: 'observed',
+    description: `other device: ${sameCustomer.status}; other customer: ${otherCustomer.status}`,
+  });
   expect(sameCustomer.status).toBe(409);
   expect(sameCustomer.body.code).toBe('WARRANTY_NOT_ALLOWED');
   expect(otherCustomer.status).toBe(409);
@@ -423,10 +427,6 @@ test('TD-08 notes: internal by default, customer-visible tone; author edits with
 test('TD-09 version conflict across two browser contexts: second save gets STALE_RECORD with who changed it; input kept', async ({
   browser,
 }) => {
-  test.fail(
-    true,
-    "BUG-02: after Reload the dialog keeps B's stale copy of fields B never edited, so the next save silently wipes A's change",
-  );
   const t = await ticket();
   const ctxA = await browser.newContext();
   const ctxB = await browser.newContext();
@@ -455,12 +455,10 @@ test('TD-09 version conflict across two browser contexts: second save gets STALE
   );
   // "Reload (refetch, form keeps values where unchanged)": a field B never touched must now show A's value.
   const shownCondition = await db.getByRole('textbox', { name: /Condition notes/ }).inputValue();
-  test
-    .info()
-    .annotations.push({
-      type: 'observed',
-      description: `B's Condition notes after Reload: "${shownCondition}"`,
-    });
+  test.info().annotations.push({
+    type: 'observed',
+    description: `B's Condition notes after Reload: "${shownCondition}"`,
+  });
   await db.getByRole('button', { name: 'Save changes' }).click();
   await expect(db).toBeHidden();
   const after = await ok(fd.ctx, 'GET', `/api/tickets/${t.id}`);

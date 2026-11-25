@@ -21,10 +21,13 @@ import { formatShortDate } from '@/lib/timezone';
 
 export function AssigneeText({ assignee }: { assignee: UserRef | null }) {
   if (!assignee) return <Text color="secondary">Unassigned</Text>;
+  // Wraps rather than truncating, so "(deactivated)" always shows (AS1.2, BUG-05). A deactivated
+  // member has no avatar: that leaves the marker room to wrap whole in a narrow column.
+  if (!assignee.active) return <Text>{`${assignee.name} (deactivated)`}</Text>;
   return (
     <HStack gap={2} vAlign="center">
       <Avatar name={assignee.name} size="xsm" tooltip={false} />
-      <Text maxLines={1}>{assignee.active ? assignee.name : `${assignee.name} (deactivated)`}</Text>
+      <Text>{assignee.name}</Text>
     </HStack>
   );
 }
@@ -34,6 +37,24 @@ export function issuesText(t: Pick<TicketListItem, 'issues' | 'description'>): s
   const shown = t.issues.slice(0, 2).join(', ');
   return t.issues.length > 2 ? `${shown} +${t.issues.length - 2}` : shown;
 }
+
+/**
+ * Status column floor: a status badge is one line by design (it never wraps), so the column is
+ * sized to fit the longest status name shown (BUG-05: "Ready for pic…" at 1440): icon, badge and cell
+ * padding plus an average glyph width, measured on the seed statuses at 1440.
+ */
+export function statusColumnMinWidth(names: readonly string[]): number {
+  const longest = names.reduce((n, s) => Math.max(n, s.length), 0);
+  return Math.max(120, longest * 6 + 52);
+}
+
+/**
+ * A flexible column whose share is its floor. Astryx sizes the table's minimum width so every
+ * proportional column reaches its floor at its share; with equal weights one wide floor (status)
+ * would raise them all and push the table into horizontal scroll. Weighting by the floor keeps the
+ * minimum table width at the sum of the floors.
+ */
+const flex = (minWidth: number) => proportional(minWidth, { minWidth });
 
 export type TicketColumn =
   | 'number'
@@ -82,7 +103,7 @@ export function TicketTable({
     {
       key: 'number',
       header: 'Ticket',
-      width: pixel(isNarrow ? 92 : 112),
+      width: pixel(isNarrow ? 92 : 104),
       renderCell: (t: TicketListItem) => (
         <VStack gap={1}>
           <Link href={`/tickets/${t.id}`} weight="semibold">
@@ -96,10 +117,10 @@ export function TicketTable({
     {
       key: 'customer',
       header: 'Customer',
-      width: proportional(1, { minWidth: 120 }),
+      width: flex(136),
       renderCell: (t: TicketListItem) => (
         <VStack gap={0.5}>
-          <Text maxLines={1} weight="medium">
+          <Text maxLines={2} weight="medium">
             {t.customer.displayName}
           </Text>
           {t.customer.primaryPhone && !t.customer.erased ? (
@@ -111,13 +132,13 @@ export function TicketTable({
     {
       key: 'device',
       header: 'Device',
-      width: proportional(1, { minWidth: 100 }),
-      renderCell: (t: TicketListItem) => <Text maxLines={2}>{deviceLabel(t.device)}</Text>,
+      width: flex(110),
+      renderCell: (t: TicketListItem) => <Text maxLines={3}>{deviceLabel(t.device)}</Text>,
     },
     {
       key: 'issues',
       header: 'Issues',
-      width: proportional(1, { minWidth: 96 }),
+      width: flex(110),
       renderCell: (t: TicketListItem) => (
         <Text maxLines={2} color={t.issues.length ? 'primary' : 'secondary'}>
           {issuesText(t)}
@@ -127,19 +148,20 @@ export function TicketTable({
     {
       key: 'status',
       header: 'Status',
-      width: proportional(1, { minWidth: 140 }),
+      width: flex(statusColumnMinWidth(rows.map((r) => r.status.name))),
       renderCell: (t: TicketListItem) => <StatusBadge {...t.status} />,
     },
     {
       key: 'assignee',
       header: 'Assignee',
-      width: proportional(1, { minWidth: 100 }),
+      width: flex(120),
       renderCell: (t: TicketListItem) => <AssigneeText assignee={t.assignee} />,
     },
     {
       key: 'due',
       header: 'Due',
-      width: proportional(1, { minWidth: 104 }),
+      // Fits the longest overdue badge ("12 days overdue", "Overdue today"); badges never wrap.
+      width: flex(140),
       renderCell: (t: TicketListItem) => (
         <DueChip
           dueAt={t.dueAt}
@@ -164,7 +186,7 @@ export function TicketTable({
     {
       key: 'created',
       header: 'Created',
-      width: pixel(128),
+      width: pixel(116),
       renderCell: (t: TicketListItem) => (
         <Text color="secondary" hasTabularNumbers>
           {formatShortDate(t.createdAt, shop)}

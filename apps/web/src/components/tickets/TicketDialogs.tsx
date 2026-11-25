@@ -59,6 +59,7 @@ import { useState } from 'react';
 import { RovingGroup } from '@/components/ui/RovingGroup';
 import { apiFetch } from '@/lib/api';
 import { errorMessage, hasErrorCode } from '@/lib/errors';
+import { rebaseForm } from '@/lib/form-rebase';
 import { qk } from '@/lib/queries';
 import { useSession } from '@/lib/shop-context';
 import { useAssignees } from '@/lib/sprint2-queries';
@@ -391,7 +392,7 @@ export function ReopenDialog({
 
 // ---------- Edit details ----------
 
-interface IntakeForm {
+export interface IntakeForm {
   issues: IssueCode[];
   customIssues: string[];
   description: string;
@@ -412,7 +413,7 @@ function majorText(amountMinor: number | null | undefined, currency: string): st
     : (amountMinor / 100).toFixed(2);
 }
 
-function formFrom(t: TicketDetail, timezone: string): IntakeForm {
+export function formFrom(t: TicketDetail, timezone: string): IntakeForm {
   const local = utcToZonedLocal(t.dueAt, timezone);
   return {
     issues: t.issues.filter((i) => i.code).map((i) => i.code as IssueCode),
@@ -471,6 +472,20 @@ export function intakeChanges(
   return out;
 }
 
+/**
+ * Reload after a version conflict (TE1.4, BUG-02): the fields this person changed since `base` are
+ * kept, every other field is re-read from `fresh` (so a colleague's change shows and is not
+ * overwritten by the next save). Checklist items merge one by one.
+ */
+export function reloadIntakeForm(
+  base: TicketDetail,
+  mine: IntakeForm,
+  fresh: TicketDetail,
+  timezone: string,
+): IntakeForm {
+  return rebaseForm(formFrom(base, timezone), mine, formFrom(fresh, timezone), ['checklist']);
+}
+
 export function EditDetailsDialog({
   ticket,
   onClose,
@@ -482,6 +497,9 @@ export function EditDetailsDialog({
   const queryClient = useQueryClient();
   const showToast = useToast();
   const write = useTicketWrite(ticket);
+  // The ticket the form was opened (or last reloaded) with: its version goes with the save and the
+  // save sends only what differs from it. Never the live query data, which another tab can refresh.
+  const [base, setBase] = useState<TicketDetail>(ticket);
   const [form, setForm] = useState<IntakeForm>(() => formFrom(ticket, shop.timezone));
   const [stale, setStale] = useState<string | null>(null);
   const set = (patch: Partial<IntakeForm>) => setForm((f) => ({ ...f, ...patch }));
@@ -522,7 +540,7 @@ export function EditDetailsDialog({
 
   const submit = () => {
     if (dueProblem || estimateBad) return;
-    const body = intakeChanges(ticket, form, shop.timezone, shop.currency);
+    const body = intakeChanges(base, form, shop.timezone, shop.currency);
     const parsed = UpdateTicketInput.safeParse(body);
     if (!parsed.success) {
       showToast({ body: parsed.error.issues[0]?.message ?? 'Check the details', type: 'error' });
@@ -557,7 +575,15 @@ export function EditDetailsDialog({
                   label="Reload"
                   size="sm"
                   onClick={async () => {
-                    await queryClient.refetchQueries({ queryKey: qk.ticket(shop.id, ticket.id) });
+                    const fresh = await queryClient.fetchQuery({
+                      queryKey: qk.ticket(shop.id, ticket.id),
+                      queryFn: () =>
+                        apiFetch(ticketPath('detail', { id: ticket.id }), TicketDetail),
+                      staleTime: 0,
+                    });
+                    // Keep only what this person edited; everything else shows the server's values.
+                    setForm((mine) => reloadIntakeForm(base, mine, fresh, shop.timezone));
+                    setBase(fresh);
                     setStale(null);
                     save.reset();
                   }}

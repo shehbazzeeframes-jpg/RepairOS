@@ -38,7 +38,7 @@ import { SHOP, USER, apiError, mockApi, type MockApiState } from './mock-api';
 /**
  * A small in-memory fake of the Sprint 2 API for the mocked e2e suite. Every fixture and every
  * response body is parsed with the contract schema, so a contract change breaks the mocks loudly.
- * R1 (model suggestions `{ type, brand, model }`) and R5 (`archived=true` in check-in search) are
+ * R1 (model suggestions `{ type, brand, model }`) and R5 (`includeArchived=true` in check-in search) are
  * mocked to the shapes in backend commit 2367930.
  */
 
@@ -702,7 +702,7 @@ export async function mockSprint2(page: Page, options: FakeOptions): Promise<Fak
     'PATCH /api/customers/:id': async (route, req) => {
       if (!(await guard(route, req))) return;
       const c = world.customers.find((x) => x.id === idOf(req))!;
-      const b = req.postDataJSON() as { version: number };
+      const b = req.postDataJSON() as { version: number } & Record<string, unknown>;
       if (b.version !== c.version)
         return json(
           route,
@@ -713,7 +713,13 @@ export async function mockSprint2(page: Page, options: FakeOptions): Promise<Fak
             'Someone else changed this customer. Reload to see their changes.',
           ),
         );
-      return json(route, 200, { ...c, version: c.version + 1 });
+      // Plain fields are stored, so two-tab tests can see each other's saves.
+      const plain = ['firstName', 'lastName', 'email', 'notes', 'city', 'postcode', 'tags'] as const;
+      const next = CustomerDetail.parse({ ...c, version: c.version + 1 });
+      for (const k of plain) if (k in b) Object.assign(next, { [k]: b[k] });
+      next.displayName = [next.firstName, next.lastName].filter(Boolean).join(' ') || c.displayName;
+      world.customers = world.customers.map((x) => (x.id === c.id ? next : x));
+      return json(route, 200, next);
     },
     'GET /api/customers/:id/devices': (route, req) =>
       json(route, 200, { items: world.devices.filter((d) => d.customerId === idOf(req)) }),
@@ -954,22 +960,19 @@ export async function mockSprint2(page: Page, options: FakeOptions): Promise<Fak
     'PATCH /api/tickets/:id': async (route, req) => {
       if (!(await guard(route, req))) return;
       const t = findTicket(idOf(req))!;
-      const b = req.postDataJSON() as { version: number; priority?: TicketDetail['priority'] };
+      const b = req.postDataJSON() as { version: number } & Record<string, unknown>;
       if (b.version !== t.version)
         return json(
           route,
           409,
           apiError(409, 'STALE_RECORD', 'This ticket changed since you opened it.'),
         );
-      return json(
-        route,
-        200,
-        replaceTicket({
-          ...t,
-          ...(b.priority ? { priority: b.priority } : {}),
-          version: t.version + 1,
-        }),
-      );
+      // Plain fields are stored, so two-tab tests can see each other's saves.
+      const plain = ['priority', 'description', 'conditionNotes', 'accessories'] as const;
+      const next: TicketDetail = { ...t, version: t.version + 1 };
+      for (const k of plain) if (k in b) Object.assign(next, { [k]: b[k] });
+      if (b.checklist) next.checklist = { ...t.checklist, ...(b.checklist as object) };
+      return json(route, 200, replaceTicket(TicketDetail.parse(next)));
     },
     'POST /api/tickets/:id/status': async (route, req) => {
       if (!(await guard(route, req))) return;
@@ -1089,15 +1092,25 @@ export async function mockSprint2(page: Page, options: FakeOptions): Promise<Fak
       );
     },
     'GET /api/search': (route, req) => {
-      const q = (new URL(req.url()).searchParams.get('q') ?? '').toLowerCase();
+      const u = new URL(req.url());
+      const q = (u.searchParams.get('q') ?? '').toLowerCase();
+      const includeArchived = u.searchParams.get('includeArchived') === 'true';
+      const limit = Number(u.searchParams.get('limit') ?? 5);
+      const digits = q.replace(/\D/g, '').replace(/^0+/, '');
       const tickets = world.tickets.filter(
         (t) =>
           t.numberLabel.toLowerCase().includes(q) ||
           t.customer.displayName.toLowerCase().includes(q),
       );
-      const customers = world.customers.filter(
-        (c) => !c.archivedAt && c.displayName.toLowerCase().includes(q),
-      );
+      const customers = world.customers
+        .filter((c) => includeArchived || !c.archivedAt)
+        .filter(
+          (c) =>
+            c.displayName.toLowerCase().includes(q) ||
+            (digits.length >= 4 && (c.primaryPhone ?? '').includes(digits)) ||
+            (c.email ?? '').includes(q),
+        )
+        .slice(0, limit);
       return json(
         route,
         200,

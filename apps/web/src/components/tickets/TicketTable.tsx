@@ -24,7 +24,8 @@ export function AssigneeText({ assignee }: { assignee: UserRef | null }) {
   return (
     <HStack gap={2} vAlign="center">
       <Avatar name={assignee.name} size="xsm" tooltip={false} />
-      <Text maxLines={1}>{assignee.active ? assignee.name : `${assignee.name} (deactivated)`}</Text>
+      {/* Wraps rather than truncating, so "(deactivated)" always shows (AS1.2, BUG-05). */}
+      <Text>{assignee.active ? assignee.name : `${assignee.name} (deactivated)`}</Text>
     </HStack>
   );
 }
@@ -33,6 +34,16 @@ export function issuesText(t: Pick<TicketListItem, 'issues' | 'description'>): s
   if (t.issues.length === 0) return t.description ?? '—';
   const shown = t.issues.slice(0, 2).join(', ');
   return t.issues.length > 2 ? `${shown} +${t.issues.length - 2}` : shown;
+}
+
+/**
+ * Status column floor: a status badge is one line by design (it never wraps), so the column is
+ * sized to fit the longest status name shown (BUG-05: "Ready for pic…" at 1440). Icon, badge and cell
+ * padding plus a generous average glyph width.
+ */
+export function statusColumnMinWidth(names: readonly string[]): number {
+  const longest = names.reduce((n, s) => Math.max(n, s.length), 0);
+  return Math.max(120, Math.ceil(longest * 6.5) + 76);
 }
 
 export type TicketColumn =
@@ -99,7 +110,7 @@ export function TicketTable({
       width: proportional(1, { minWidth: 120 }),
       renderCell: (t: TicketListItem) => (
         <VStack gap={0.5}>
-          <Text maxLines={1} weight="medium">
+          <Text maxLines={2} weight="medium">
             {t.customer.displayName}
           </Text>
           {t.customer.primaryPhone && !t.customer.erased ? (
@@ -127,7 +138,7 @@ export function TicketTable({
     {
       key: 'status',
       header: 'Status',
-      width: proportional(1, { minWidth: 140 }),
+      width: proportional(1, { minWidth: statusColumnMinWidth(rows.map((r) => r.status.name)) }),
       renderCell: (t: TicketListItem) => <StatusBadge {...t.status} />,
     },
     {

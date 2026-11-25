@@ -1,4 +1,5 @@
 import { Badge } from '@astryxdesign/core/Badge';
+import { HStack } from '@astryxdesign/core/HStack';
 import { Icon } from '@astryxdesign/core/Icon';
 import { Text } from '@astryxdesign/core/Text';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
@@ -25,11 +26,26 @@ export function DueChip({ shop, now, format = 'relative', ...due }: DueChipProps
   const hint = visible === d.absolute ? d.label : d.absolute;
 
   let body;
-  if (d.tone === 'overdue') {
+  if (d.tone === 'overdue' && format === 'absolute') {
+    // The date sits next to the badge, not in it: a badge never wraps, so "n days overdue · date"
+    // in one badge was cut off in narrow cards (BUG-05).
+    return (
+      <HStack gap={2} vAlign="center" wrap="wrap">
+        <Badge
+          variant="error"
+          label={d.label}
+          icon={<Icon icon={ExclamationTriangleIcon} size="xsm" />}
+        />
+        <Text color="secondary" hasTabularNumbers>
+          {d.absolute}
+        </Text>
+      </HStack>
+    );
+  } else if (d.tone === 'overdue') {
     body = (
       <Badge
         variant="error"
-        label={format === 'absolute' ? `${d.label} · ${d.absolute}` : d.label}
+        label={d.label}
         icon={<Icon icon={ExclamationTriangleIcon} size="xsm" />}
       />
     );

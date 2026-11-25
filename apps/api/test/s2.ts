@@ -1,7 +1,8 @@
 /** Sprint 2 API test helpers: check-in through the real endpoint, valid IMEIs, statuses by name. */
 import { randomUUID } from 'node:crypto';
 import { type CreateTicketInput, type TicketDetail, TicketStatusListResponse } from '@repairos/contracts';
-import type { Agent } from './helpers';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { type Agent, agentFor } from './helpers';
 
 /** A Luhn-valid 15-digit IMEI from a 14-digit body (deterministic per seed). */
 export function imei(seed: number): string {
@@ -75,3 +76,10 @@ export async function checkInExisting(agent: Agent, customerId: string, deviceId
 }
 
 export const newKey = () => randomUUID();
+
+/** Signs an existing user in on another app instance (e.g. a "restarted" API). */
+export async function signInOn(app: NestExpressApplication, email: string): Promise<Agent> {
+  const agent = agentFor(app);
+  await agent.post('/api/auth/sign-in/email').send({ email, password: 'Password123!' }).expect(200);
+  return agent;
+}

@@ -30,7 +30,7 @@ let adminDb: PrismaClient;
 let owner: OwnerWithShop;
 let tech: Member;
 let fd: Member;
-let S: Record<string, { id: string; category: string }>;
+
 
 beforeAll(async () => {
   app = await createTestApp();
@@ -38,7 +38,7 @@ beforeAll(async () => {
   owner = await ownerWithShop(app, { shopName: 'Ticket Shop' });
   tech = await addMember(app, adminDb, owner.shopId, 'TECHNICIAN', 'Tess Tech');
   fd = await addMember(app, adminDb, owner.shopId, 'FRONT_DESK', 'Fran Desk');
-  S = await statuses(owner.agent);
+
 });
 afterAll(async () => {
   await adminDb?.$disconnect();
@@ -169,7 +169,7 @@ describe('views, filters, search, sort, cursor, counts = dashboard (TL1, DB1)', 
   let shop: OwnerWithShop;
   let st: Record<string, { id: string; category: string }>;
   let techM: Member;
-  const ids: Record<string, TicketDetail> = {};
+  const ids = {} as Record<'a' | 'b' | 'c' | 'd', TicketDetail>;
 
   beforeAll(async () => {
     shop = await ownerWithShop(app, { shopName: 'Views Shop' });

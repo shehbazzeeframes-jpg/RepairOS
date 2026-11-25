@@ -14,7 +14,9 @@ import {
   PasscodeReveal,
   PatternLock,
   UpdateDeviceInput,
+  ModelSuggestionsQuery,
   catalogueModels,
+  suggestModels,
   deviceLabel,
   formatPattern,
   isValidImei,
@@ -148,6 +150,30 @@ describe('built-in data', () => {
     expect(catalogueModels('PHONE', 'apple', '13 pro')).toEqual(['iPhone 13 Pro', 'iPhone 13 Pro Max']);
     expect(catalogueModels('CONSOLE', 'Nintendo', 'oled')).toEqual(['Switch OLED']);
     expect(catalogueModels('PHONE', 'Infinix').length).toBeGreaterThan(0);
+  });
+  it('R1/R2: one-box model search without type/brand, exact and shortest first', () => {
+    const hits = suggestModels({ q: 'iph 13' });
+    expect(hits[0]).toEqual({ type: 'PHONE', brand: 'Apple', model: 'iPhone 13', source: 'catalogue', useCount: 0 });
+    expect(hits.map((h) => h.model)).toEqual(['iPhone 13', 'iPhone 13 Pro', 'iPhone 13 mini', 'iPhone 13 Pro Max']);
+    expect(suggestModels({ q: 'iphone 13 mini' })[0]!.model).toBe('iPhone 13 mini');
+    expect(suggestModels({ q: 'apple iphone 13' })[0]!.model).toBe('iPhone 13'); // exact on "brand model"
+    expect(suggestModels({ q: 'galaxy a5' }).map((h) => h.model)).toEqual(['Galaxy A53', 'Galaxy A54', 'Galaxy A55']);
+    expect(suggestModels({ q: 'oled', type: 'CONSOLE' }).map((h) => h.model)).toEqual(['Switch OLED', 'Steam Deck OLED']);
+    expect(suggestModels({ q: '13', brand: 'google' })).toEqual([]);
+    expect(suggestModels({ q: 'ipad', limit: 3 })).toHaveLength(3);
+    // ModelSuggestionsQuery: type optional
+    expect(ModelSuggestionsQuery.parse({ q: 'iph 13' })).toEqual({ q: 'iph 13', limit: 20 });
+  });
+  it('R1: shop history merges with the catalogue (case-insensitive) and ranks by use count on ties', () => {
+    const shopHistory = [
+      { type: 'PHONE' as const, brand: 'apple', model: 'iphone 13', useCount: 4 },
+      { type: 'PHONE' as const, brand: 'Nokia', model: 'Nokia 3310', useCount: 2 },
+    ];
+    const hits = suggestModels({ q: 'iphone 13', type: 'PHONE', shopHistory });
+    expect(hits[0]).toMatchObject({ brand: 'Apple', model: 'iPhone 13', source: 'shop', useCount: 4 });
+    const none = suggestModels({ type: 'PHONE', shopHistory, limit: 2 });
+    expect(none.map((h) => h.model)).toEqual(['iPhone 13', 'Nokia 3310']);
+    expect(suggestModels({ q: '3310', shopHistory })[0]).toMatchObject({ brand: 'Nokia', source: 'shop' });
   });
   it('labels', () => {
     expect(deviceLabel({ brand: 'Apple', model: 'iPhone 13' })).toBe('Apple iPhone 13');

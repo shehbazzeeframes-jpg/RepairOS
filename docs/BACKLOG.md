@@ -35,8 +35,16 @@ API guard + echo, the "You're now working in {shop}" banner, and the two-tab Pla
 
 *Source: Sprint 1 web fixes (M3 follow-up).*
 If tab 2 switches shop, a request already sent by tab 1 is answered for the new shop but cached under the old shop's key until the next `/me` refetch (focus or 403) drops it. Close it fully by having the API echo `shopId` in shop-scoped responses (or accept an `X-Shop-Id` header and reject a mismatch with 409), with the web client discarding mismatched responses.
+**API side done (Sprint 2, A13):** every shop-scoped route (`@RequirePermission` / `@ShopScoped`, Sprint 1 routes
+included) rejects a mismatching `X-Shop-Id` with `409 ACTIVE_SHOP_CHANGED` before the handler runs and echoes the
+session shop in `X-Shop-Id`; CORS allows/exposes the header. Remaining: the web client (send the header, discard
+mismatched responses) and the two-tab Playwright test.
 
 ### Done in Sprint 2: flaky mocked e2e, onboarding country select (BK2)
 *Source: Sprint 1 web fixes.* Playwright runs with `reducedMotion: 'reduce'` and picks Astryx `Selector` options
 through `selectOption()` (`e2e/tests/support/select.ts`): waits for the listbox and the option, clicks, then checks
 the trigger shows the choice. `--repeat-each=50 --retries=0` on `onboarding.spec.ts`: 200/200 passed.
+
+### Clean up expired ticket idempotency keys (Sprint 3)
+*Source: Sprint 2 API.*
+Expired `ticket_idempotency_keys` rows are only replaced when the same key is reused. Add a daily worker job that deletes rows older than the key TTL.

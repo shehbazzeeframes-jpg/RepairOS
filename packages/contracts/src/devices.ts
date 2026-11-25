@@ -313,11 +313,13 @@ export type DeviceLookupResponse = z.infer<typeof DeviceLookupResponse>;
 
 /**
  * GET /api/devices/model-suggestions?type=&brand=&q=&limit= · permission `customers.view`
- * → 200 `ModelSuggestionsResponse`. Shop history first (models used before for type+brand, most used first),
- * then catalogue matches (`catalogueModels`), de-duplicated case-insensitively. `q` filters (every word contained).
+ * → 200 `ModelSuggestionsResponse`. One-box search (R1): `type` and `brand` are optional, so `q=iph 13` alone returns
+ * `{ type: 'PHONE', brand: 'Apple', model: 'iPhone 13', ... }` first and the form fills all three. Each word of `q`
+ * must appear in "brand model". Catalogue + models this shop used before, de-duplicated; ranked by `suggestModels`
+ * (R2): exact match, then shortest model, then shop use count, then catalogue order.
  */
 export const ModelSuggestionsQuery = z.object({
-  type: DeviceType,
+  type: DeviceType.optional(),
   brand: z.string().trim().max(40).optional(),
   q: z.string().trim().max(60).optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
@@ -326,7 +328,13 @@ export type ModelSuggestionsQuery = z.infer<typeof ModelSuggestionsQuery>;
 
 export const ModelSuggestionsResponse = z.object({
   items: z.array(
-    z.object({ model: z.string(), source: z.enum(['shop', 'catalogue']), useCount: z.number().int().min(0) }),
+    z.object({
+      type: DeviceType,
+      brand: z.string(),
+      model: z.string(),
+      source: z.enum(['shop', 'catalogue']),
+      useCount: z.number().int().min(0),
+    }),
   ),
 });
 export type ModelSuggestionsResponse = z.infer<typeof ModelSuggestionsResponse>;

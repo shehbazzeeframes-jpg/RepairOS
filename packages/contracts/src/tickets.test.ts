@@ -230,7 +230,7 @@ describe('list views and queries (TL1)', () => {
     expect(q).toMatchObject({ view: 'open', sort: 'default', limit: 25, status: ['s1', 's2'], assignee: ['unassigned', 'u1'], deviceType: ['PHONE'], warranty: true, category: ['OPEN', 'WAITING'] });
     expect(TicketListQuery.safeParse({ view: 'kanban' }).success).toBe(false);
     expect(TicketListQuery.safeParse({ dueFrom: '2026-11-30', dueTo: '2026-11-01' }).success).toBe(false);
-    expect(GlobalSearchQuery.parse({ q: 'T-1042' })).toEqual({ q: 'T-1042', limit: 5 });
+    expect(GlobalSearchQuery.parse({ q: 'T-1042' })).toEqual({ q: 'T-1042', limit: 5, includeArchived: false });
     expect(GlobalSearchQuery.safeParse({ q: 'x' }).success).toBe(false);
     expect(ticketPath('status', { id: 'abc' })).toBe('/api/tickets/abc/status');
   });

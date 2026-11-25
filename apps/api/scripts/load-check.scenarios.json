@@ -1,0 +1,25 @@
+{
+  "Ticket list: All open (default sort), page 1 + capped total": ["/api/tickets?view=open"],
+  "Ticket list: Overdue / Ready / Unassigned": ["/api/tickets?view=overdue", "/api/tickets?view=ready", "/api/tickets?view=unassigned"],
+  "Ticket list: Closed (97k rows, total capped)": ["/api/tickets?view=closed"],
+  "Ticket list: All, Created (newest)": ["/api/tickets?view=all&sort=created"],
+  "Ticket list: search (name / phone / IMEI last 6 / number)": [
+    "/api/tickets?view=all&q=Sofia%20Thompson",
+    "/api/tickets?view=all&q=%2B16460007919",
+    "/api/tickets?view=all&q=451653",
+    "/api/tickets?view=all&q=T-1101"
+  ],
+  "Customer list: default + search (name / phone digits)": [
+    "/api/customers",
+    "/api/customers?q=ayesha%20ivanova",
+    "/api/customers?q=7919"
+  ],
+  "Global search (name / phone / IMEI / number)": [
+    "/api/search?q=mateo%20thompson",
+    "/api/search?q=(929)%20079-9819",
+    "/api/search?q=350197472782253",
+    "/api/search?q=t1201"
+  ],
+  "Dashboard": ["/api/dashboard"],
+  "Ticket counts": ["/api/tickets/counts"]
+}

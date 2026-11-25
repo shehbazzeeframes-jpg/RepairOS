@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SearchText } from './common';
+import { IsoDateTime, QueryBoolean, SearchText } from './common';
 import { CustomerKind } from './customers';
 import { DeviceType } from './devices';
 import { StatusRef } from './ticket-statuses';
@@ -11,7 +11,8 @@ import { StatusRef } from './ticket-statuses';
  * has its permission (`tickets.view` → tickets; `customers.view` → customers and devices), else [] → 200
  * `GlobalSearchResponse`. p95 < 200 ms.
  * - Tickets (≤ limit): number (`parseTicketNumberQuery`), customer name/phone, IMEI/serial.
- * - Customers (≤ limit): name/phone/email; archived excluded; erased never match by name/phone.
+ * - Customers (≤ limit): name/phone/email; archived excluded unless `includeArchived=true` (R5, check-in); erased
+ *   never match by name/phone.
  * - Devices (≤ limit): IMEI/serial; opens `latestTicket` or the customer.
  * - `exactMatch`: the query equals a ticket number, a full IMEI or a full serial → Enter jumps straight there
  *   (barcode-scanner friendly).
@@ -23,6 +24,11 @@ import { StatusRef } from './ticket-statuses';
 export const GlobalSearchQuery = z.object({
   q: SearchText,
   limit: z.coerce.number().int().min(1).max(10).default(5),
+  /**
+   * R5: also return archived customers (each flagged with `archivedAt`), for check-in's customer search
+   * ("Restore and use"). Default false: the command palette never shows archived customers. Erased never match.
+   */
+  includeArchived: QueryBoolean,
 });
 export type GlobalSearchQuery = z.infer<typeof GlobalSearchQuery>;
 
@@ -41,6 +47,8 @@ export const SearchCustomerResult = z.object({
   displayName: z.string(),
   primaryPhone: z.string().nullable(),
   email: z.string().nullable(),
+  /** R5: non-null only with `includeArchived=true` (archived customer: offer "Restore and use"). */
+  archivedAt: IsoDateTime.nullable(),
 });
 export type SearchCustomerResult = z.infer<typeof SearchCustomerResult>;
 

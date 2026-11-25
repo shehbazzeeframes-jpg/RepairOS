@@ -528,7 +528,8 @@ export const CUSTOMER_SORT_LABELS: Record<CustomerSort, string> = {
  *   (normalised with the shop country: valid → exact E.164; else ≥ 4 digits → digits substring), email contains.
  * - `type` PERSON|BUSINESS; `tags` any-of (case-insensitive); `hasOpen=true` open tickets > 0;
  *   `consent` = channels whose marketing consent is currently granted (all listed must be granted);
- *   `createdFrom`/`createdTo` inclusive shop-local dates; `archived=true` also includes archived rows (badge).
+ *   `createdFrom`/`createdTo` inclusive shop-local dates; `archived=true` also includes archived rows (badge;
+ *   `archivedAt` set). R5: check-in's customer search uses `archived=true` to offer "Restore and use"; default false.
  * - `sort` default `name`; keyset cursor; `limit` 25/50/100.
  * Erased customers are never listed. Errors: 400 VALIDATION_FAILED (incl. bad cursor).
  */

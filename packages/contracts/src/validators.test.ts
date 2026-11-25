@@ -33,6 +33,19 @@ describe('normalizePhone', () => {
     expect(formatPhone('+923001234567', 'PK')).toBe('0300 1234567');
     expect(formatPhone('+442079460018', 'US')).toBe('+44 20 7946 0018');
   });
+  it('R7: compares by calling code, so UK ranges libphonenumber files under GG/JE/IM stay national', () => {
+    expect(formatPhone('+447911123456', 'GB')).toBe('07911 123456'); // GB mobile (classified GG)
+    expect(formatPhone('+442079460018', 'GB')).toBe('020 7946 0018'); // GB landline
+    expect(formatPhone('+441534123456', 'GB')).toBe('01534 123456'); // real Jersey landline (JE, +44)
+    expect(formatPhone('+447797123456', 'GB')).toBe('07797 123456'); // Jersey mobile
+    expect(formatPhone('+441534123456', 'US')).toBe('+44 1534 123456');
+    expect(formatPhone('+447911123456', 'PK')).toBe('+44 7911 123456');
+    expect(formatPhone('+12125550142', 'US')).toBe('(212) 555-0142');
+    expect(formatPhone('+12125550142', 'GB')).toBe('+1 212 555 0142');
+    expect(formatPhone('+923001234567', 'PK')).toBe('0300 1234567');
+    expect(formatPhone('+924235761234', 'PK')).toBe('(042) 35761234');
+    expect(formatPhone('+923001234567', 'GB')).toBe('+92 300 1234567');
+  });
 });
 
 describe('normalizePostcode', () => {

@@ -4,16 +4,22 @@ import { describe, expect, it } from 'vitest';
 import { ApiException } from '../common/errors';
 import type { MembershipRef } from '../prisma/prisma.service';
 import type { AuthContext } from './auth-context';
-import { IS_PUBLIC, PERMISSION, SIGNED_IN } from './auth-context';
+import { IS_PUBLIC, PERMISSION, SHOP_SCOPED, SIGNED_IN } from './auth-context';
 import { PermissionGuard, resolveActiveShop } from './guards';
 
-function ctxWith(auth: AuthContext | undefined, meta: Record<string, unknown> = {}): ExecutionContext {
+function ctxWith(
+  auth: AuthContext | undefined,
+  meta: Record<string, unknown> = {},
+  headers: Record<string, string> = {},
+  res = { headers: {} as Record<string, string> },
+): ExecutionContext {
   const handler = () => undefined;
   for (const [k, v] of Object.entries(meta)) Reflect.defineMetadata(k, v, handler);
+  const response = { setHeader: (k: string, v: string) => (res.headers[k] = v) };
   return {
     getHandler: () => handler,
     getClass: () => class {},
-    switchToHttp: () => ({ getRequest: () => ({ auth }) }),
+    switchToHttp: () => ({ getRequest: () => ({ auth, headers }), getResponse: () => response }),
   } as unknown as ExecutionContext;
 }
 
@@ -45,6 +51,35 @@ describe('PermissionGuard', () => {
     expect(guard.canActivate(ctxWith(tech, { [PERMISSION]: 'timeclock.self' }))).toBe(true);
     const owner: AuthContext = { ...base, activeShop: { shopId: 'a', role: 'OWNER' } };
     expect(guard.canActivate(ctxWith(owner, { [PERMISSION]: 'billing.manage' }))).toBe(true);
+  });
+
+  it('A13: X-Shop-Id mismatch → 409 ACTIVE_SHOP_CHANGED on shop-scoped routes; absent or equal → allowed and echoed', () => {
+    const owner: AuthContext = { ...base, activeShop: { shopId: 'a', role: 'OWNER' } };
+    const res = { headers: {} as Record<string, string> };
+    expect(guard.canActivate(ctxWith(owner, { [PERMISSION]: 'tickets.view' }, { 'x-shop-id': 'a' }, res))).toBe(true);
+    expect(res.headers['X-Shop-Id']).toBe('a');
+    expect(guard.canActivate(ctxWith(owner, { [PERMISSION]: 'tickets.view' }))).toBe(true);
+    expect(guard.canActivate(ctxWith(owner, { [SHOP_SCOPED]: true }, { 'x-shop-id': 'a' }))).toBe(true);
+    for (const meta of [{ [PERMISSION]: 'tickets.view' }, { [SHOP_SCOPED]: true }]) {
+      let caught: unknown;
+      try {
+        guard.canActivate(ctxWith(owner, meta, { 'x-shop-id': 'b' }));
+      } catch (err) {
+        caught = err;
+      }
+      expect((caught as ApiException).getResponse()).toMatchObject({ statusCode: 409, code: 'ACTIVE_SHOP_CHANGED' });
+    }
+    // The mismatch wins over a missing permission (the role may differ in the other shop).
+    const tech: AuthContext = { ...base, activeShop: { shopId: 'a', role: 'TECHNICIAN' } };
+    expect(() => guard.canActivate(ctxWith(tech, { [PERMISSION]: 'settings.view' }, { 'x-shop-id': 'b' }))).toThrow(/switched shop/);
+    // Signed-in-only routes (/api/me, shop switch) are not shop-scoped.
+    expect(guard.canActivate(ctxWith(owner, { [SIGNED_IN]: true }, { 'x-shop-id': 'b' }))).toBe(true);
+    // Deactivated in the session shop, header = that shop → the access-removed 403, not a 409.
+    expect(() =>
+      guard.canActivate(
+        ctxWith({ ...base, activeShop: null, accessRemovedShopId: 'a' }, { [PERMISSION]: 'timeclock.self' }, { 'x-shop-id': 'a' }),
+      ),
+    ).toThrow(/no longer have access/);
   });
 });
 

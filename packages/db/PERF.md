@@ -117,6 +117,47 @@ Dataset (shop perf_shop_main): {"customers":50000,"phones":60000,"devices":70000
 | Ticket timeline (50) | 0.03 | 0.04 | Index Scan "ticket_events_shopId_ticketId_createdAt_id_idx" |
 | Customer tickets tab | 0.04 | 0.05 | Index Scan tickets_customer_idx |
 
+## API
+
+End-to-end latency through the HTTP API (Sprint 2 API branch), measured on the same perf dataset: everything a real
+request does (Better Auth session lookup, membership check, `X-Shop-Id` guard, `SET LOCAL` + RLS, the list/search SQL,
+the capped total, hydrating the page into contract DTOs, JSON).
+
+**Target: p95 < 300 ms for lists and search. Result: met; every scenario's p95 is 145–262 ms at 20 concurrent
+requests** (run 3 below; an earlier run after the same fixes was within ±65 ms, all p95 < 300 ms). Single requests (no contention) take 10–35 ms
+(`/api/me` 12 ms, counts 10 ms, dashboard 21 ms, Closed view 25 ms, All open 27 ms, global search 34 ms).
+
+How: a scratch database `repairos_s2perf` (`pnpm db:migrate` + `pnpm db:seed:perf`), the built API
+(`node apps/api/dist/main.js`, `NODE_ENV=development`, `LOG_LEVEL=warn`, default Prisma pool = 9 connections) on port
+4500, signed in as a Manager of `perf_shop_main`, then
+`node apps/api/scripts/load-check.mjs http://localhost:4500 "<cookie>" apps/api/scripts/load-check.scenarios.json`:
+per scenario 40 warm-up requests, then 400 requests at **20 concurrent**, cycling through the scenario's URLs. Same dev
+container as above (4 vCPUs shared by Postgres, the API and the load generator), so at 20 concurrent the latency is
+mostly queueing: one Node process serves ~110–180 requests/s.
+
+| Scenario (run 3) | Requests | p50 ms | p95 ms | p99 ms | max ms | req/s |
+|---|---:|---:|---:|---:|---:|---:|
+| Ticket list: All open (default sort), page 1 + capped total | 400 | 131.8 | 181.2 | 217.9 | 259.5 | 145 |
+| Ticket list: Overdue / Ready / Unassigned | 400 | 124.9 | 161.8 | 179.0 | 188.0 | 156 |
+| Ticket list: Closed (97k rows, total capped) | 400 | 121.3 | 164.4 | 178.5 | 189.5 | 159 |
+| Ticket list: All, Created (newest) | 400 | 115.5 | 144.5 | 154.6 | 163.3 | 170 |
+| Ticket list: search (name / phone / IMEI last 6 / number) | 400 | 175.1 | 224.8 | 264.3 | 356.1 | 113 |
+| Customer list: default + search (name / phone digits) | 400 | 140.3 | 255.0 | 303.5 | 416.2 | 130 |
+| Global search (name / phone / IMEI / number) | 400 | 127.6 | 173.7 | 189.0 | 205.2 | 153 |
+| Dashboard (counts + My queue + Unassigned) | 400 | 154.4 | 262.0 | 280.7 | 319.4 | 119 |
+| Ticket counts | 400 | 105.3 | 154.9 | 168.7 | 176.2 | 180 |
+
+Findings while measuring:
+
+1. **The Closed view sorted the whole history** (p95 466 ms in the first run): its `ORDER BY "closedAt" DESC NULLS LAST,
+   id DESC` did not match `tickets_closed_idx (closedAt DESC, id)`. The API now uses exactly the index order for the
+   Closed view (and `createdAt DESC, id` for "Created"), which made it an index scan (p95 165 ms).
+2. **Round trips dominate**: every Sprint 2 request needs the shop's country/timezone/hours/prefix; reading them in one
+   query instead of three took ~10 % off every endpoint.
+3. A bigger Prisma pool (`connection_limit=20`) made things worse on this 4-vCPU box (p95 up to 393 ms): the limit is
+   CPU, not connections. Leave the default; scale with more API processes.
+4. The global-search story target (p95 < 200 ms, §7) is met at 20 concurrent (174 ms) on this box.
+
 ## Plans
 
 App-role plans include the RLS policy condition (`NULLIF(current_setting(...))`); `[inside ...]` plans are the

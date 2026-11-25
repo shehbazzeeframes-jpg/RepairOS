@@ -6,9 +6,10 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@ta
 import NextLink from 'next/link';
 import { useState, type ReactNode } from 'react';
 import { defaultThemeSlug, themes } from '../../astryx-themes';
-import { isApiRequestError } from '@/lib/api';
+import { getRequestShopId, isApiRequestError } from '@/lib/api';
 import { meQueryKey } from '@/lib/me';
 import { watchActiveShop } from '@/lib/shop-cache';
+import { noteShopChanged } from '@/lib/shop-changed';
 
 function makeQueryClient() {
   // A 403 may mean the user's role or membership changed, and ACTIVE_SHOP_CHANGED that another tab
@@ -18,6 +19,8 @@ function makeQueryClient() {
       isApiRequestError(error) &&
       (error.status === 403 || error.body.code === 'ACTIVE_SHOP_CHANGED')
     ) {
+      // The banner "You're now working in {shop}" (A13) survives the shell remount via this latch.
+      if (error.body.code === 'ACTIVE_SHOP_CHANGED') noteShopChanged(getRequestShopId());
       // cancelRefetch: false joins a /me fetch already in flight instead of cancelling it, so a burst
       // of 403s makes one request (the API's one-shot `accessRemoved` arrives in that one).
       void client.invalidateQueries({ queryKey: meQueryKey }, { cancelRefetch: false });

@@ -39,6 +39,28 @@ export const qk = {
   audit: (shopId: string, q: AuditParams) => [SHOP_SCOPE, shopId, 'audit', q] as const,
   auditEvent: (shopId: string, id: string) => [SHOP_SCOPE, shopId, 'audit-event', id] as const,
   invite: (token: string) => ['invite', token] as const,
+  // ---- Sprint 2. Everything ticket-derived (list, counts, detail, timeline, dashboard) sits under
+  // 'tickets' so one invalidation after a write refreshes every view of it.
+  ticketsAll: (shopId: string) => [SHOP_SCOPE, shopId, 'tickets'] as const,
+  tickets: (shopId: string, search: string) => [SHOP_SCOPE, shopId, 'tickets', 'list', search] as const,
+  ticketCounts: (shopId: string) => [SHOP_SCOPE, shopId, 'tickets', 'counts'] as const,
+  ticket: (shopId: string, id: string) => [SHOP_SCOPE, shopId, 'tickets', 'detail', id] as const,
+  timeline: (shopId: string, id: string, filter: string) =>
+    [SHOP_SCOPE, shopId, 'tickets', 'timeline', id, filter] as const,
+  dashboard: (shopId: string) => [SHOP_SCOPE, shopId, 'tickets', 'dashboard'] as const,
+  customersAll: (shopId: string) => [SHOP_SCOPE, shopId, 'customers'] as const,
+  customers: (shopId: string, search: string) =>
+    [SHOP_SCOPE, shopId, 'customers', 'list', search] as const,
+  customer: (shopId: string, id: string) => [SHOP_SCOPE, shopId, 'customers', 'detail', id] as const,
+  customerDevices: (shopId: string, id: string, archived: boolean) =>
+    [SHOP_SCOPE, shopId, 'customers', 'devices', id, archived] as const,
+  consents: (shopId: string, id: string) => [SHOP_SCOPE, shopId, 'customers', 'consents', id] as const,
+  customerTags: (shopId: string) => [SHOP_SCOPE, shopId, 'customers', 'tags'] as const,
+  statuses: (shopId: string) => [SHOP_SCOPE, shopId, 'statuses'] as const,
+  ticketSettings: (shopId: string) => [SHOP_SCOPE, shopId, 'ticket-settings'] as const,
+  assignees: (shopId: string) => [SHOP_SCOPE, shopId, 'assignees'] as const,
+  checkInContext: (shopId: string) => [SHOP_SCOPE, shopId, 'check-in-context'] as const,
+  search: (shopId: string, q: string) => [SHOP_SCOPE, shopId, 'search', q] as const,
 };
 
 /**

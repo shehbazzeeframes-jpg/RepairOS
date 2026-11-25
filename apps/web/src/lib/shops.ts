@@ -7,6 +7,7 @@ import { apiFetch } from './api';
 import { authClient } from './auth-client';
 import { noteMe } from './access-removed';
 import { meQueryKey } from './me';
+import { clearRecentForUser } from './recent-items';
 
 /**
  * Story §7: a person may own up to 3 shops. Not exported by contracts (it's an API env value);
@@ -37,7 +38,10 @@ export function useSignOut(redirectTo: string | null = '/sign-in') {
   const queryClient = useQueryClient();
   const router = useRouter();
   return async () => {
+    const userId = (queryClient.getQueryData(meQueryKey) as MeResponse | null | undefined)?.user.id;
     await authClient.signOut();
+    // A19: recent items are per user + shop in this browser and go with the session.
+    if (userId) clearRecentForUser(userId);
     // Update /me in place (observers re-render as signed out), drop shop data, refresh the rest.
     queryClient.setQueryData(meQueryKey, null);
     noteMe(null);

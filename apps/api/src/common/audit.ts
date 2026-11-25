@@ -57,9 +57,15 @@ export function changedFields<T extends AuditValues>(before: T, after: Partial<T
  * Row lock on the shop (SELECT … FOR UPDATE) for the rest of the transaction. Every staff/seat/owner invariant
  * (seat limit, last active owner, duplicate invites, overlapping manual time entries) is checked under it, so
  * concurrent requests for the same shop serialise.
+ *
+ * `noKeyUpdate` (ticket status configuration): FOR NO KEY UPDATE still serialises with every other lockShop, but not
+ * with the KEY SHARE lock that every insert of a tenant row takes on its shop through the foreign key. A status
+ * change waits for tickets (its cascade), so it must not also block ticket writes at the shop row (lock order,
+ * packages/db/README.md).
  */
-export async function lockShop(tx: ScopedTx, shopId: string): Promise<void> {
-  await tx.$queryRaw`SELECT "id" FROM "shops" WHERE "id" = ${shopId} FOR UPDATE`;
+export async function lockShop(tx: ScopedTx, shopId: string, opts: { noKeyUpdate?: boolean } = {}): Promise<void> {
+  if (opts.noKeyUpdate) await tx.$queryRaw`SELECT "id" FROM "shops" WHERE "id" = ${shopId} FOR NO KEY UPDATE`;
+  else await tx.$queryRaw`SELECT "id" FROM "shops" WHERE "id" = ${shopId} FOR UPDATE`;
 }
 
 /**
@@ -70,6 +76,18 @@ export function isCheckViolation(err: unknown, constraints: readonly string[]): 
   if (!(err instanceof Error)) return false;
   const name = /violates check constraint \\?"([A-Za-z0-9_]+)\\?"/.exec(err.message)?.[1];
   return name !== undefined && constraints.includes(name);
+}
+
+/**
+ * Postgres foreign-key violation (SQLSTATE 23503) of one of `constraints`: Prisma P2003 (constraint in the message or
+ * `meta.field_name`) or, from raw SQL / cascades, an error whose message holds the Postgres text.
+ */
+export function isForeignKeyViolation(err: unknown, constraints: readonly string[]): boolean {
+  if (!(err instanceof Error)) return false;
+  const e = err as Error & { code?: unknown; meta?: Record<string, unknown> };
+  const text = `${e.message} ${JSON.stringify(e.meta ?? {})}`;
+  const isFk = e.code === 'P2003' || (e.meta?.code as unknown) === '23503' || /foreign key constraint/i.test(e.message);
+  return isFk && constraints.some((c) => text.includes(c));
 }
 
 /** Prisma unique-constraint violation (P2002), e.g. the partial unique indexes. */

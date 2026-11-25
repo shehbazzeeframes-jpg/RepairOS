@@ -6,9 +6,11 @@
   "scripts": {
     "test": "playwright test --trace off --project=chromium",
     "screenshots": "playwright test --trace off --project=screenshots",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:real": "playwright test -c playwright.real.config.ts"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.11.0",
     "@playwright/test": "1.63.0",
     "@repairos/contracts": "workspace:*",
     "@types/node": "^22.20.6",

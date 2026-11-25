@@ -10,6 +10,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "e2e": "pnpm --filter @repairos/e2e test",
+    "e2e:real": "pnpm --filter @repairos/e2e test:real",
     "db:migrate": "pnpm --filter @repairos/db migrate",
     "db:seed": "pnpm --filter @repairos/db seed",
     "format": "prettier --write ."

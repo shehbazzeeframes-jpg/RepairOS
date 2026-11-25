@@ -19,6 +19,7 @@ import type { Actor } from '../auth/auth-context';
 import { changedFields, isCheckViolation, isUniqueViolation, lockShop, writeAudit } from '../common/audit';
 import { apiError, notFound, validationFailed } from '../common/errors';
 import { PrismaService } from '../prisma/prisma.service';
+import { lockStatuses, lockTicketsInStatus } from '../repair/locks';
 import { loadShopInfo, toTicketStatusDto } from '../repair/read';
 
 const STATUS_AUDIT_FIELDS = ['name', 'category', 'colour', 'notifyCustomer', 'isHidden', 'requiresNote'] as const;
@@ -50,7 +51,7 @@ export class TicketConfigService {
   async createStatus(actor: Actor, input: CreateTicketStatusInput): Promise<TicketStatus> {
     try {
       return await this.db(actor).tx(async (tx) => {
-        await lockShop(tx, actor.shopId);
+        await lockShop(tx, actor.shopId, { noKeyUpdate: true });
         const existing = await this.statuses(tx);
         const rule = checkStatusCreate(existing, input);
         if (!rule.ok) throw apiError(rule.code);
@@ -80,11 +81,16 @@ export class TicketConfigService {
     }
   }
 
-  /** A category change re-categorises the status's tickets in the same statement (FK ON UPDATE CASCADE). */
+  /**
+   * A category change re-categorises the status's tickets in the same statement (FK ON UPDATE CASCADE). Lock order
+   * (packages/db/README.md): shop → this status FOR UPDATE → its tickets (sorted) → cascade. A ticket moving into the status
+   * holds it FOR SHARE, so the in-use check below runs after that move commits, never in the middle of it.
+   */
   async updateStatus(actor: Actor, id: string, input: UpdateTicketStatusInput): Promise<TicketStatus> {
     try {
       return await this.db(actor).tx(async (tx) => {
-        await lockShop(tx, actor.shopId);
+        await lockShop(tx, actor.shopId, { noKeyUpdate: true });
+        await lockStatuses(tx, [id], 'update');
         const existing = await this.statuses(tx);
         const target = existing.find((s) => s.id === id);
         if (!target) throw notFound();
@@ -92,6 +98,7 @@ export class TicketConfigService {
         if (!rule.ok) throw apiError(rule.code, rule.vars);
         const diff = changedFields(target as unknown as Record<string, unknown>, Object.fromEntries(STATUS_AUDIT_FIELDS.map((f) => [f, input[f]])));
         if (!diff) return target;
+        if ('category' in diff.after) await lockTicketsInStatus(tx, id);
         await tx.ticketStatus.update({ where: { id }, data: diff.after });
         await writeAudit(tx, { shopId: actor.shopId, actorUserId: actor.userId, action: 'ticket_status.updated', entityId: id, ...diff });
         return (await this.statuses(tx)).find((s) => s.id === id)!;
@@ -106,8 +113,10 @@ export class TicketConfigService {
 
   async reorder(actor: Actor, input: ReorderTicketStatusesInput): Promise<TicketStatusListResponse> {
     return this.db(actor).tx(async (tx) => {
-      await lockShop(tx, actor.shopId);
+      await lockShop(tx, actor.shopId, { noKeyUpdate: true });
       const existing = await this.statuses(tx);
+      // Every status, sorted, before updating them in the new order (a ticket write holds up to two FOR SHARE).
+      await lockStatuses(tx, existing.map((s) => s.id), 'update');
       const ids = new Set(existing.map((s) => s.id));
       if (input.ids.length !== ids.size || input.ids.some((x) => !ids.has(x))) {
         throw validationFailed([{ path: ['ids'], message: 'List every status exactly once' }]);

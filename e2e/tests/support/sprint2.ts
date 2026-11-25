@@ -7,12 +7,12 @@ import {
   CustomerListItem,
   DEFAULT_BUSINESS_HOURS,
   DEFAULT_TICKET_STATUSES,
-  DEVICE_MODEL_CATALOGUE,
   DashboardSummary,
   Device,
   DeviceLookupResponse,
   GlobalSearchResponse,
   ISSUE_LABELS,
+  ModelSuggestionsResponse,
   SHOP_ID_HEADER,
   TicketCounts,
   TicketDetail,
@@ -23,8 +23,10 @@ import {
   computeDefaultDueAt,
   deviceLabel,
   normalizeImei,
+  suggestModels,
   ticketInView,
   type CreateTicketInput,
+  type DeviceTypeValue,
   type IssueCode,
   type MeResponse,
   type StatusRef,
@@ -457,29 +459,16 @@ export const TICKET_SETTINGS = TicketSettings.parse({
   updatedAt: T0,
 });
 
-/** R1 mock: one-box ranking (exact, shortest, catalogue order) over the contract catalogue. */
+/** R1/R2: the contract's own ranking (`suggestModels`), as GET /api/devices/model-suggestions uses it. */
 export function modelSuggestions(q: string, type?: string | null, brand?: string | null) {
-  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-  const ql = q.trim().toLowerCase();
-  return DEVICE_MODEL_CATALOGUE.map((m, i) => ({ m, i }))
-    .filter(
-      ({ m }) =>
-        (!type || m.type === type) && (!brand || m.brand.toLowerCase() === brand.toLowerCase()),
-    )
-    .filter(({ m }) => words.every((w) => `${m.brand} ${m.model}`.toLowerCase().includes(w)))
-    .sort((a, b) => {
-      const ea = a.m.model.toLowerCase() === ql ? 0 : 1;
-      const eb = b.m.model.toLowerCase() === ql ? 0 : 1;
-      return ea - eb || a.m.model.length - b.m.model.length || a.i - b.i;
-    })
-    .slice(0, 8)
-    .map(({ m }) => ({
-      type: m.type,
-      brand: m.brand,
-      model: m.model,
-      source: 'catalogue' as const,
-      useCount: 0,
-    }));
+  return ModelSuggestionsResponse.parse({
+    items: suggestModels({
+      q,
+      type: (type as DeviceTypeValue | null) ?? null,
+      brand: brand ?? null,
+      limit: 8,
+    }),
+  }).items;
 }
 
 function toListItem(c: CustomerDetail): CustomerListItem {
@@ -1126,6 +1115,7 @@ export async function mockSprint2(page: Page, options: FakeOptions): Promise<Fak
             displayName: c.displayName,
             primaryPhone: c.primaryPhone,
             email: c.email,
+            archivedAt: c.archivedAt,
           })),
           devices: [],
           exactMatch:

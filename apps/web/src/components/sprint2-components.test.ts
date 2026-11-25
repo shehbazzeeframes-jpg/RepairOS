@@ -151,7 +151,14 @@ describe('global search rows', () => {
       },
     ],
     customers: [
-      { id: 'c1', kind: 'PERSON', displayName: 'Sarah', primaryPhone: null, email: 's@x.co' },
+      {
+        id: 'c1',
+        kind: 'PERSON',
+        displayName: 'Sarah',
+        primaryPhone: null,
+        email: 's@x.co',
+        archivedAt: null,
+      },
     ],
     devices: [
       {

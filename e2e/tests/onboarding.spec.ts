@@ -52,11 +52,11 @@ test('onboarding validates, shows market defaults, creates the shop and opens th
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Welcome, Alex' })).toBeVisible();
   const create = api.calls.find((c) => c.path === '/api/shops');
-  // Empty optional fields are left out so the API applies its defaults.
+  // Empty optional fields are left out so the API applies its defaults; the contract normalises the phone to E.164.
   expect(create?.body).toEqual({
     name: 'Fix It Phones',
     country: 'GB',
-    phone: '020 7123 4567',
+    phone: '+442071234567',
     city: 'London',
   });
 });
@@ -80,7 +80,8 @@ test('onboarding maps API validation issues onto fields', async ({ page }) => {
   await page.getByLabel('Shop name').fill('Fix It Phones');
   await page.getByRole('combobox', { name: 'Country' }).click();
   await page.getByRole('option', { name: 'United Kingdom' }).click();
-  await page.getByLabel('Shop phone').fill('123');
+  // Passes the contract's client-side check, so the (mocked) API's issue is what shows.
+  await page.getByLabel('Shop phone').fill('020 7123 4567');
   await page.getByRole('button', { name: 'Create shop' }).click();
   await expect(page.getByText('Could not create your shop')).toBeVisible();
   await expect(form.getByText('Enter a valid phone number for United Kingdom')).toBeVisible();

@@ -1,5 +1,5 @@
 import type { Page, Request, Route } from '@playwright/test';
-import { ApiError, MeResponse, Shop } from '@repairos/contracts';
+import { ApiError, MeResponse, Shop, permissionsFor } from '@repairos/contracts';
 
 /** Fixtures are parsed with the shared contracts, so a contract change breaks the mocks loudly. */
 export const USER = { id: 'usr_1', name: 'Alex Morgan', email: 'alex@fixitphones.co.uk' };
@@ -18,9 +18,11 @@ export const SHOP: Shop = Shop.parse({
 
 export const ME_WITH_SHOP: MeResponse = MeResponse.parse({
   user: USER,
-  memberships: [{ shopId: SHOP.id, shopName: SHOP.name, role: 'OWNER' }],
+  memberships: [{ shopId: SHOP.id, shopName: SHOP.name, role: 'OWNER', status: 'ACTIVE' }],
   activeShop: SHOP,
   role: 'OWNER',
+  permissions: permissionsFor('OWNER'),
+  accessRemoved: null,
 });
 
 export const ME_NO_SHOP: MeResponse = MeResponse.parse({
@@ -28,6 +30,8 @@ export const ME_NO_SHOP: MeResponse = MeResponse.parse({
   memberships: [],
   activeShop: null,
   role: null,
+  permissions: [],
+  accessRemoved: null,
 });
 
 export function apiError(statusCode: number, code: string, message: string): ApiError {

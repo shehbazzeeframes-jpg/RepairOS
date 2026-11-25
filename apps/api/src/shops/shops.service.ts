@@ -75,14 +75,16 @@ export class ShopsService {
           pricesIncludeTax: market.pricesIncludeTax,
           phone,
           addressLine1: input.addressLine1 || null,
+          addressLine2: input.addressLine2 || null,
           city: input.city || null,
+          region: input.region || null,
           postcode: input.postcode || null,
         },
       });
       await tx.location.create({ data: { shopId, name: 'Main', isPrimary: true } });
       await tx.membership.create({ data: { shopId, userId, role: 'OWNER' } });
       await tx.taxRate.createMany({
-        data: market.taxRates.map((t) => ({ shopId, name: t.name, rateBps: t.rateBps, appliesTo: t.appliesTo })),
+        data: market.taxRates.map((t) => ({ shopId, name: t.name, rateMilliPct: t.rateMilliPct, appliesTo: t.appliesTo })),
       });
       const dto = toShopDto(created);
       await tx.auditLog.create({

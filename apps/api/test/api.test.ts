@@ -78,7 +78,9 @@ describe('onboarding: sign up → create shop → me', () => {
     const me = MeResponse.parse((await agent.get('/api/me').expect(200)).body);
     expect(me.activeShop?.id).toBe(shop.id);
     expect(me.role).toBe('OWNER');
-    expect(me.memberships).toEqual([{ shopId: shop.id, shopName: 'Fix It Fast', role: 'OWNER' }]);
+    expect(me.memberships).toEqual([{ shopId: shop.id, shopName: 'Fix It Fast', role: 'OWNER', status: 'ACTIVE' }]);
+    expect(me.permissions).toContain('settings.manage');
+    expect(me.accessRemoved).toBeNull();
 
     // Main location, OWNER membership, tax rate and audit log were written for this shop.
     const db = tenantDb(appDb, { shopId: shop.id, userId });
@@ -86,7 +88,7 @@ describe('onboarding: sign up → create shop → me', () => {
       Promise.all([tx.location.findMany(), tx.taxRate.findMany(), tx.auditLog.findMany()]),
     );
     expect(locations.map((l) => l.name)).toEqual(['Main']);
-    expect(taxRates.map((t) => [t.name, t.rateBps, t.appliesTo])).toEqual([['Sales tax', 0, 'all']]);
+    expect(taxRates.map((t) => [t.name, t.rateMilliPct, t.appliesTo])).toEqual([['Sales tax', 0, 'all']]);
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ action: 'shop.created', entityType: 'Shop', entityId: shop.id, actorUserId: userId });
 
@@ -106,10 +108,10 @@ describe('onboarding: sign up → create shop → me', () => {
     const shop = Shop.parse(res.body);
     expect(shop).toMatchObject({ currency: 'PKR', timezone: 'Asia/Karachi', pricesIncludeTax: false, phone: '+923001234567' });
 
-    const rates = await tenantDb(appDb, { shopId: shop.id, userId }).client.taxRate.findMany({ orderBy: { rateBps: 'desc' } });
-    expect(rates.map((t) => [t.name, t.rateBps, t.appliesTo])).toEqual([
-      ['GST', 1800, 'goods'],
-      ['Sales tax on services', 1600, 'services'],
+    const rates = await tenantDb(appDb, { shopId: shop.id, userId }).client.taxRate.findMany({ orderBy: { rateMilliPct: 'desc' } });
+    expect(rates.map((t) => [t.name, t.rateMilliPct, t.appliesTo])).toEqual([
+      ['GST', 18000, 'goods'],
+      ['Sales tax on services', 16000, 'services'],
     ]);
   });
 
@@ -122,7 +124,7 @@ describe('onboarding: sign up → create shop → me', () => {
     expect(shop).toMatchObject({ currency: 'GBP', locale: 'en-GB', timezone: 'Europe/London', pricesIncludeTax: true, phone: '+442079460958' });
 
     const rates = await tenantDb(appDb, { shopId: shop.id, userId }).client.taxRate.findMany();
-    expect(rates.map((t) => [t.name, t.rateBps, t.appliesTo])).toEqual([['VAT', 2000, 'all']]);
+    expect(rates.map((t) => [t.name, t.rateMilliPct, t.appliesTo])).toEqual([['VAT', 20000, 'all']]);
   });
 });
 
@@ -300,7 +302,7 @@ describe('tenant isolation', () => {
     await expect(
       appDb.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT set_config('app.shop_id', ${shopA}, true)`;
-        await tx.$executeRaw`INSERT INTO tax_rates (id, "shopId", name, "rateBps", "appliesTo", "updatedAt") VALUES ('x', ${shopB}, 'Evil', 1, 'all', now())`;
+        await tx.$executeRaw`INSERT INTO tax_rates (id, "shopId", name, "rateMilliPct", "appliesTo", "updatedAt") VALUES ('x', ${shopB}, 'Evil', 1, 'all', now())`;
       }),
     ).rejects.toThrow(/row-level security/);
   });

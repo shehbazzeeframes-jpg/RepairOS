@@ -7,31 +7,46 @@ export type CountryCode = z.infer<typeof CountryCode>;
 export const CurrencyCode = z.enum(['USD', 'GBP', 'PKR']);
 export type CurrencyCode = z.infer<typeof CurrencyCode>;
 
+/** What a tax rate applies to: all items, goods (parts & accessories) or services (labour). */
+export const TaxAppliesTo = z.enum(['all', 'goods', 'services']);
+export type TaxAppliesTo = z.infer<typeof TaxAppliesTo>;
+
+export interface MarketTaxRateDefault {
+  name: string;
+  /** Thousandths of a percent (D2): 8875 = 8.875%, 20000 = 20%. */
+  rateMilliPct: number;
+  appliesTo: TaxAppliesTo;
+  /** D1: exactly one default for goods and one for services per shop; an `all` rate may be both. */
+  isDefaultGoods: boolean;
+  isDefaultServices: boolean;
+}
+
 export interface MarketDefaults {
   currency: CurrencyCode;
   locale: 'en-US' | 'en-GB';
   timezone: string;
   pricesIncludeTax: boolean;
-  taxRates: { name: string; rateBps: number; appliesTo: 'all' | 'goods' | 'services' }[];
+  taxRates: MarketTaxRateDefault[];
   /** Digits shown in the UI (PKR is shown without decimals). Storage is always minor units. */
   displayFractionDigits: number;
 }
 
-/** rateBps = basis points: 2000 = 20.00% */
 export const MARKET_DEFAULTS: Record<CountryCode, MarketDefaults> = {
   US: {
     currency: 'USD', locale: 'en-US', timezone: 'America/New_York', pricesIncludeTax: false,
-    taxRates: [{ name: 'Sales tax', rateBps: 0, appliesTo: 'all' }], displayFractionDigits: 2,
+    taxRates: [{ name: 'Sales tax', rateMilliPct: 0, appliesTo: 'all', isDefaultGoods: true, isDefaultServices: true }],
+    displayFractionDigits: 2,
   },
   GB: {
     currency: 'GBP', locale: 'en-GB', timezone: 'Europe/London', pricesIncludeTax: true,
-    taxRates: [{ name: 'VAT', rateBps: 2000, appliesTo: 'all' }], displayFractionDigits: 2,
+    taxRates: [{ name: 'VAT', rateMilliPct: 20000, appliesTo: 'all', isDefaultGoods: true, isDefaultServices: true }],
+    displayFractionDigits: 2,
   },
   PK: {
     currency: 'PKR', locale: 'en-GB', timezone: 'Asia/Karachi', pricesIncludeTax: false,
     taxRates: [
-      { name: 'GST', rateBps: 1800, appliesTo: 'goods' },
-      { name: 'Sales tax on services', rateBps: 1600, appliesTo: 'services' },
+      { name: 'GST', rateMilliPct: 18000, appliesTo: 'goods', isDefaultGoods: true, isDefaultServices: false },
+      { name: 'Sales tax on services', rateMilliPct: 16000, appliesTo: 'services', isDefaultGoods: false, isDefaultServices: true },
     ],
     displayFractionDigits: 0,
   },

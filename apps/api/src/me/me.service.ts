@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { MeResponse } from '@repairos/contracts';
+import { type MeResponse, permissionsFor } from '@repairos/contracts';
 import type { AuthContext } from '../auth/auth-context';
 import { forbidden } from '../common/errors';
 import { PrismaService } from '../prisma/prisma.service';
@@ -26,11 +26,15 @@ export class MeService {
       activeShop = row ? toShopDto(row) : null;
     }
 
+    const role = activeShop ? (auth.activeShop?.role ?? null) : null;
     return {
       user: auth.user,
-      memberships: memberships.map((m) => ({ shopId: m.shopId, shopName: m.shop.name, role: m.role })),
+      // Sprint 1 adds Membership.status; until then every membership is ACTIVE.
+      memberships: memberships.map((m) => ({ shopId: m.shopId, shopName: m.shop.name, role: m.role, status: 'ACTIVE' as const })),
       activeShop,
-      role: activeShop ? (auth.activeShop?.role ?? null) : null,
+      role,
+      permissions: permissionsFor(role),
+      accessRemoved: null,
     };
   }
 

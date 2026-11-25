@@ -88,7 +88,8 @@ const accessoriesRule = (v: { accessories?: string[]; accessoriesOther?: string 
  * - At least one issue or a description. Checklist keys must belong to the device type.
  * - `estimate.currency` must be the shop currency. Due omitted → `computeDefaultDueAt`; given → `dueAtFor` and
  *   `dueInputProblem` (past → 400). `assigneeUserId` must be an ACTIVE member.
- * - `warrantyOfTicketId`: original must be closed through COLLECTED; the stored link points at the ROOT original
+ * - `warrantyOfTicketId`: original must be closed through COLLECTED and be for the SAME device (M2, else 409
+ *   WARRANTY_NOT_ALLOWED; a new device can never match); the stored link points at the ROOT original
  *   (if the original is itself a warranty ticket, its original). Priority defaults NORMAL.
  * Errors: 400 VALIDATION_FAILED, 403 FORBIDDEN, 404 NOT_FOUND (customer/device/original/assignee not in shop),
  * 409 CUSTOMER_ARCHIVED ("Restore and use"), 409 CUSTOMER_ERASED, 409 ASSIGNEE_NOT_ACTIVE,

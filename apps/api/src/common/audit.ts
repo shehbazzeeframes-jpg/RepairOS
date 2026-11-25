@@ -62,6 +62,16 @@ export async function lockShop(tx: ScopedTx, shopId: string): Promise<void> {
   await tx.$queryRaw`SELECT "id" FROM "shops" WHERE "id" = ${shopId} FOR UPDATE`;
 }
 
+/**
+ * Postgres CHECK violation (SQLSTATE 23514) of one of `constraints`. Prisma reports it as a known or (from a cascaded
+ * update) unknown request error; both carry the constraint name in the message.
+ */
+export function isCheckViolation(err: unknown, constraints: readonly string[]): boolean {
+  if (!(err instanceof Error)) return false;
+  const name = /violates check constraint \\?"([A-Za-z0-9_]+)\\?"/.exec(err.message)?.[1];
+  return name !== undefined && constraints.includes(name);
+}
+
 /** Prisma unique-constraint violation (P2002), e.g. the partial unique indexes. */
 export function isUniqueViolation(err: unknown): boolean {
   return err instanceof Error && err.name === 'PrismaClientKnownRequestError' && (err as { code?: string }).code === 'P2002';

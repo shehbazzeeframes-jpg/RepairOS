@@ -182,7 +182,7 @@ describe('customers (CU1–CU5)', () => {
     expect((await auditOf(adminDb, owner.shopId, 'customer.restored')).filter((a) => a.entityId === t.customer.id)).toHaveLength(1);
   });
 
-  it('export: JSON download without passcodes or internal notes; audited with counts', async () => {
+  it('export: JSON download without passcodes, with every note (A11-c); audited with counts', async () => {
     const st = await statuses(owner.agent);
     const t = await checkInNew(owner.agent, { firstName: 'Export', passcode: { lockType: 'PIN', value: '987654' } });
     await owner.agent.post(`/api/tickets/${t.id}/notes`).send({ body: 'internal secret note' }).expect(201);
@@ -196,7 +196,7 @@ describe('customers (CU1–CU5)', () => {
     expect(body.tickets[0]!.customerVisibleNotes.map((n) => n.body)).toEqual(['Your phone is ready']);
     expect(body.tickets[0]!.statusHistory.map((s) => s.status)).toEqual(['Received', 'Ready for pickup']);
     expect(res.text).not.toContain('987654');
-    expect(res.text).not.toContain('internal secret note');
+    expect(body.tickets[0]!.notes.map((n) => n.visibility)).toEqual(['INTERNAL', 'CUSTOMER']); // A11-c: full subject-access export
     expect(res.text).not.toMatch(/passcodeCiphertext|passcodeIv|passcodeTag/);
     const audit = (await auditOf(adminDb, owner.shopId, 'customer.exported')).find((a) => a.entityId === t.customer.id)!;
     expect(audit.after).toEqual({ phones: 1, devices: 1, tickets: 1, consentEvents: 0 });

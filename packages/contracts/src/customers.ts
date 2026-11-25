@@ -639,7 +639,10 @@ export const CUSTOMER_ACTION_PATHS = {
  * GET /api/customers/:id/export · permission `customers.export_delete` → 200 `application/json`,
  * `Content-Disposition: attachment; filename="customer-{id}-{YYYY-MM-DD}.json"` (shop-local date), body
  * `CustomerExport`. Synchronous. Works for archived customers. Audits `customer.exported` (counts only).
- * Devices never include passcodes; tickets include only CUSTOMER-visible notes (A11).
+ * A full subject-access export (tech lead decision A11-c, replacing "export leaves out internal notes"): the
+ * customer record with its notes, consent history, devices with their notes, and per ticket every note (internal
+ * and customer-visible, labelled by `visibility`), condition notes, "other" accessories and the cancel note.
+ * Devices never include passcodes (not even encrypted). Additive change: `customerVisibleNotes` is kept.
  * Errors: 404 NOT_FOUND (incl. erased).
  */
 export const CustomerExport = z.object({
@@ -674,7 +677,24 @@ export const CustomerExport = z.object({
       checklist: z.record(z.string()),
       accessories: z.array(z.string()),
       estimate: z.object({ amountMinor: z.number().int(), currency: z.string() }).nullable(),
+      /** Kept for existing readers: the CUSTOMER-visible subset of `notes`. */
       customerVisibleNotes: z.array(z.object({ body: z.string(), createdAt: IsoDateTime })),
+      /** A11-c: every ticket note, internal and customer-visible, labelled, oldest first. */
+      notes: z.array(
+        z.object({
+          body: z.string(),
+          /** Same values as tickets `NoteVisibility` (INTERNAL = staff note, CUSTOMER = visible to the customer). */
+          visibility: z.enum(['INTERNAL', 'CUSTOMER']),
+          visibilityLabel: z.string(),
+          createdAt: IsoDateTime,
+          editedAt: IsoDateTime.nullable(),
+        }),
+      ),
+      /** A11-c: the other free text recorded about the repair. */
+      conditionNotes: z.string().nullable(),
+      accessoriesOther: z.string().nullable(),
+      cancelReason: z.string().nullable(),
+      cancelNote: z.string().nullable(),
     }),
   ),
 });
@@ -689,7 +709,9 @@ export function customerExportFilename(customerId: string, localDate: string): s
  * POST /api/customers/:id/erase · permission `customers.export_delete` → 200 `EraseCustomerResponse`.
  * One transaction (A11, tech-lead clarification): name → "Erased customer"; business name/contact, phones, email,
  * address, notes, tags, consent history deleted; preferred contact cleared; denormalised search columns cleared;
- * each device keeps type/brand/model and loses IMEI, serial, colour, notes, passcode; tickets stay (incl. notes);
+ * each device keeps type/brand/model and loses IMEI, serial, colour, notes, passcode; tickets stay (incl. notes) but
+ * every occurrence of the customer's names, email, address, postcode, IMEI/serial and phones in ticket text, issue
+ * labels, notes, timeline data and audit payloads becomes "[erased]" (A11-b, rules in packages/db/README.md);
  * `erasedAt` + `archivedAt` set; audits `customer.erased` with counts only. Irreversible.
  * Errors: 400 VALIDATION_FAILED (confirm ≠ "ERASE"), 404 NOT_FOUND (incl. already erased),
  * 409 CUSTOMER_HAS_OPEN_TICKETS.

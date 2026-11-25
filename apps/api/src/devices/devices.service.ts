@@ -19,7 +19,7 @@ import { CONFIG, type AppConfig } from '../config';
 import { apiError, notFound, validationFailed } from '../common/errors';
 import { PrismaService } from '../prisma/prisma.service';
 import { auditPasscodeChange, isSecretLock, passcodeData } from '../repair/passcode';
-import { DEVICE_SELECT, deviceDto, deviceDtos, loadShopInfo, ticketLink } from '../repair/read';
+import { DEVICE_SELECT, deviceDto, deviceDtos, loadShopInfo, lockCustomers, ticketLink } from '../repair/read';
 
 /**
  * Creates a device for a customer (also used nested in check-in). A secret passcode is encrypted and audited
@@ -117,6 +117,11 @@ export class DevicesService {
 
   async update(actor: Actor, id: string, input: UpdateDeviceInputParsed): Promise<Device> {
     return this.db(actor).tx(async (tx) => {
+      // L1: lock the owner first (as erase does), then read: a concurrent erase either commits before this read
+      // (→ CUSTOMER_ERASED) or waits until this edit commits and then clears what it wrote.
+      const owner = await tx.device.findFirst({ where: { id }, select: { customerId: true } });
+      if (!owner) throw notFound();
+      await lockCustomers(tx, [owner.customerId]);
       const d = await tx.device.findFirst({ where: { id }, select: { ...DEVICE_SELECT, customer: { select: { erasedAt: true } } } });
       if (!d) throw notFound();
       if (d.customer.erasedAt) throw apiError('CUSTOMER_ERASED');

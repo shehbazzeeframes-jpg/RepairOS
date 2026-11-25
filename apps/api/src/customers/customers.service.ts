@@ -20,6 +20,7 @@ import {
   effectiveConsentChanges,
   formatTicketNumber,
   LIST_TOTAL_CAP,
+  NOTE_VISIBILITY_LABELS,
   normalizePhone,
   STALE_CUSTOMER_MESSAGE,
   updateCustomerSchema,
@@ -377,7 +378,7 @@ export class CustomersService {
             issues: { orderBy: { position: 'asc' } },
             checklistItems: true,
             accessories: true,
-            notes: { where: { visibility: 'CUSTOMER' }, orderBy: { createdAt: 'asc' } },
+            notes: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }, // A11-c: every note, labelled below
             events: { where: { type: { in: ['created', 'status_changed', 'cancelled', 'reopened'] } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
           },
         }),
@@ -433,7 +434,18 @@ export class CustomersService {
           checklist: Object.fromEntries(t.checklistItems.map((c) => [c.itemKey, c.result])),
           accessories: t.accessories.map((a) => a.code),
           estimate: t.estimateMinor === null ? null : { amountMinor: t.estimateMinor, currency: t.currency },
-          customerVisibleNotes: t.notes.map((n) => ({ body: n.body, createdAt: n.createdAt.toISOString() })),
+          customerVisibleNotes: t.notes.filter((n) => n.visibility === 'CUSTOMER').map((n) => ({ body: n.body, createdAt: n.createdAt.toISOString() })),
+          notes: t.notes.map((n) => ({
+            body: n.body,
+            visibility: n.visibility,
+            visibilityLabel: NOTE_VISIBILITY_LABELS[n.visibility],
+            createdAt: n.createdAt.toISOString(),
+            editedAt: iso(n.editedAt),
+          })),
+          conditionNotes: t.conditionNotes,
+          accessoriesOther: t.accessoriesOther,
+          cancelReason: t.cancelReason,
+          cancelNote: t.cancelNote,
         })),
       };
       await writeAudit(tx, {

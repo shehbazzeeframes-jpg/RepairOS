@@ -380,8 +380,7 @@ describe('cancel, reopen window, warranty (TK-C, TK-R, TK-W)', () => {
     expect((await adminDb.customer.findUniqueOrThrow({ where: { id: t.customer.id } })).openTicketCount).toBe(1);
     expect((await auditOf(adminDb, owner.shopId, 'ticket.reopened')).find((a) => a.entityId === t.id)?.after).toEqual({
       statusId: st['Ready for pickup']!.id,
-      reason: 'Still broken',
-    });
+    }); // A11-b: no free-text reason in the audit payload (it is on the timeline)
     // not closed → TRANSITION_NOT_ALLOWED
     expect((await fd.agent.post(`/api/tickets/${t.id}/reopen`).send({ reason: 'Again' })).body.code).toBe('TRANSITION_NOT_ALLOWED');
     // close again and age it past 7 days

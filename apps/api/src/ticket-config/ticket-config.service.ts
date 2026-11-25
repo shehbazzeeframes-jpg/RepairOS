@@ -16,12 +16,14 @@ import {
 } from '@repairos/contracts';
 import type { Prisma, ScopedTx } from '@repairos/db';
 import type { Actor } from '../auth/auth-context';
-import { changedFields, isUniqueViolation, lockShop, writeAudit } from '../common/audit';
+import { changedFields, isCheckViolation, isUniqueViolation, lockShop, writeAudit } from '../common/audit';
 import { apiError, notFound, validationFailed } from '../common/errors';
 import { PrismaService } from '../prisma/prisma.service';
 import { loadShopInfo, toTicketStatusDto } from '../repair/read';
 
 const STATUS_AUDIT_FIELDS = ['name', 'category', 'colour', 'notifyCustomer', 'isHidden', 'requiresNote'] as const;
+/** CHECKs a concurrent ticket status change can make the cascaded category update violate (mapped to STATUS_IN_USE). */
+const STATUS_RACE_CHECKS = ['tickets_closed_at_check', 'tickets_status_before_close_check'] as const;
 
 /** Settings → Ticket statuses (§3) and Settings → Tickets (§4), plus the check-in context. */
 @Injectable()
@@ -96,6 +98,8 @@ export class TicketConfigService {
       });
     } catch (err) {
       if (isUniqueViolation(err)) throw apiError('STATUS_NAME_TAKEN');
+      // L2: a ticket entered/left the status between the in-use check and the cascaded re-categorisation.
+      if (isCheckViolation(err, STATUS_RACE_CHECKS)) throw apiError('STATUS_IN_USE');
       throw err;
     }
   }

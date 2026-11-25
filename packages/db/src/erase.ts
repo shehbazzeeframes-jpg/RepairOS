@@ -22,16 +22,21 @@ export interface EraseCustomerCounts {
   consentEvents: number;
   devices: number;
   tickets: number;
+  /** Audit rows whose before/after had an identifier replaced by "[erased]". */
   auditRowsRedacted: number;
+  /** Ticket, issue, note and timeline rows whose free text had an identifier replaced by "[erased]" (A11-b). */
+  textRowsRedacted: number;
 }
 
 const CODES: readonly EraseCustomerErrorCode[] = ['CUSTOMER_HAS_OPEN_TICKETS', 'CUSTOMER_ERASED', 'CUSTOMER_NOT_FOUND'];
 
 /**
  * Erases (anonymises) a customer of the transaction's shop (CU9, A11 + tech lead clarification) by calling the
- * database function app_erase_customer. See its comment in the Sprint 2 migration for exactly what is cleared,
- * deleted and kept (tickets, ticket notes and the timeline are kept; audit payloads holding the customer's
- * personal values are redacted).
+ * database function app_erase_customer. See its comment in migration `20261203090000_erase_redacts_free_text` for
+ * exactly what is cleared, deleted and kept: tickets, ticket notes and the timeline are kept, but every occurrence
+ * of the customer's names, email, address, postcode, IMEI/serial and phones (any common format) in ticket text,
+ * issue labels, notes, timeline data and audit payloads is replaced by "[erased]" (A11-b), with the whole-word /
+ * minimum-length rules documented there.
  *
  * Run it inside `tenantDb(...).tx(...)`, together with the `customer.erased` audit event (counts only):
  *

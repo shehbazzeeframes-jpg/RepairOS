@@ -43,8 +43,8 @@ import { CONFIG, type AppConfig } from '../config';
 import { insertCustomer } from '../customers/customer-write';
 import { insertDevice, setDevicePasscode } from '../devices/devices.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { deletePasscodeOnClose } from '../repair/passcode';
-import { loadShopInfo, refreshCustomerCounters, type ShopInfo, ticketDetail, userRefs } from '../repair/read';
+import { deletePasscodeOfReleasedDevice, deletePasscodeOnClose, lockDevice } from '../repair/passcode';
+import { loadShopInfo, lockCustomers, refreshCustomerCounters, type ShopInfo, ticketDetail, userRefs } from '../repair/read';
 import { toNoteDto } from './ticket-query.service';
 
 /** Output of contracts `UpdateTicketInput` (the controller validates with it). */
@@ -167,6 +167,8 @@ export class TicketsService {
         deviceId = await insertDevice(tx, this.ctx(actor), customerId, input.newDevice);
         deviceType = input.newDevice.type;
       } else {
+        // H1: same lock as a close of another ticket of this device, so that close sees this new ticket.
+        await lockDevice(tx, input.deviceId!);
         const d = await tx.device.findFirst({ where: { id: input.deviceId! }, select: { id: true, customerId: true, type: true, lockType: true, passcodeKeyVersion: true } });
         if (!d) throw notFound();
         if (d.customerId !== customerId) throw validationFailed([{ path: ['deviceId'], message: 'This device belongs to another customer' }]);
@@ -191,10 +193,11 @@ export class TicketsService {
       if (input.warrantyOfTicketId) {
         const original = await tx.ticket.findFirst({
           where: { id: input.warrantyOfTicketId },
-          select: { id: true, warrantyOfTicketId: true, status: { select: { systemRole: true } } },
+          select: { id: true, deviceId: true, warrantyOfTicketId: true, status: { select: { systemRole: true } } },
         });
         if (!original) throw notFound();
-        if (original.status.systemRole !== 'COLLECTED') throw apiError('WARRANTY_NOT_ALLOWED');
+        // M2 (tech lead): a Collected ticket for the SAME device.
+        if (original.status.systemRole !== 'COLLECTED' || original.deviceId !== deviceId) throw apiError('WARRANTY_NOT_ALLOWED');
         warrantyRoot = original.warrantyOfTicketId ?? original.id;
       }
 
@@ -279,6 +282,9 @@ export class TicketsService {
       let deviceType = device.type as DeviceType;
       let customerId = t.customerId;
       if (parsed.customerId && parsed.customerId !== t.customerId) {
+        // L1: lock both customers (sorted) before reading the new one, so a concurrent erase either commits first
+        // (and is seen below) or waits for this move (and then counts the ticket as open).
+        await lockCustomers(tx, [t.customerId, parsed.customerId]);
         const c = await tx.customer.findFirst({ where: { id: parsed.customerId }, select: { erasedAt: true, archivedAt: true } });
         if (!c) throw notFound();
         if (c.erasedAt) throw apiError('CUSTOMER_ERASED');
@@ -401,6 +407,8 @@ export class TicketsService {
       for (const e of events) await this.event(tx, actor, id, e);
       if (changes.length) await this.event(tx, actor, id, { type: 'fields_changed', data: { changes } });
       if (customerId !== t.customerId) await refreshCustomerCounters(tx, [t.customerId, customerId]);
+      // H1: the old device may have no non-closed ticket left.
+      if (data.deviceId) await deletePasscodeOfReleasedDevice(tx, { deviceId: t.deviceId, settingOn: shop.deletePasscodeOnClose });
       return ticketDetail(tx, id, shop, now);
     });
   }
@@ -445,6 +453,7 @@ export class TicketsService {
         noteId,
       });
       if (r.closes) {
+        await lockCustomers(tx, [t.customerId]); // lock order: ticket → customer → device
         await deletePasscodeOnClose(tx, { shopId: actor.shopId, ticketId: id, deviceId: t.deviceId, settingOn: shop.deletePasscodeOnClose });
         await refreshCustomerCounters(tx, [t.customerId]);
       }
@@ -501,8 +510,10 @@ export class TicketsService {
         actorUserId: actor.userId,
         action: 'ticket.cancelled',
         entityId: id,
-        after: { statusId: target.id, reason: input.reason, note, returnedConfirmed },
+        // A11-b: reason code and ids only; the free-text note stays on the ticket and its timeline (redacted on erase).
+        after: { statusId: target.id, reason: input.reason, returnedConfirmed },
       });
+      await lockCustomers(tx, [t.customerId]); // lock order: ticket → customer → device
       await deletePasscodeOnClose(tx, { shopId: actor.shopId, ticketId: id, deviceId: t.deviceId, settingOn: shop.deletePasscodeOnClose });
       await refreshCustomerCounters(tx, [t.customerId]);
       return ticketDetail(tx, id, shop, now);
@@ -551,7 +562,8 @@ export class TicketsService {
         action: 'ticket.reopened',
         entityId: id,
         before: { statusId: t.statusId },
-        after: { statusId: target.id, reason: input.reason },
+        // A11-b: no free text in audit payloads; the reopen reason is on the timeline.
+        after: { statusId: target.id },
       });
       await refreshCustomerCounters(tx, [t.customerId]);
       return ticketDetail(tx, id, shop, now);
@@ -594,6 +606,9 @@ export class TicketsService {
    */
   async revealPasscode(actor: Actor, ticketId: string, now = new Date()): Promise<PasscodeReveal> {
     const result = await this.db(actor).tx(async (tx) => {
+      // L4: a close holds the ticket FOR UPDATE until it commits; FOR SHARE waits for it, and the read below (a new
+      // statement) then sees the ticket closed. A close that starts after us waits until this reveal commits.
+      await tx.$queryRaw`SELECT "id" FROM "tickets" WHERE "id" = ${ticketId} AND "shopId" = app_current_shop_id() FOR SHARE`;
       const t = await tx.ticket.findFirst({ where: { id: ticketId }, select: { id: true, statusCategory: true, deviceId: true } });
       if (!t) throw notFound();
       if (t.statusCategory === 'CLOSED') throw apiError('PASSCODE_NOT_AVAILABLE');

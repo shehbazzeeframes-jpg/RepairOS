@@ -299,12 +299,29 @@ export async function customerDetail(tx: ScopedTx, id: string): Promise<Customer
 }
 
 /**
+ * Row-locks customers (shop-scoped, ids sorted so two transactions always lock in the same order) for the rest of
+ * the transaction, in one statement of its own. Lock order for ticket writes: ticket → customer(s) → device.
+ */
+export async function lockCustomers(tx: ScopedTx, customerIds: Iterable<string>): Promise<void> {
+  const ids = [...new Set(customerIds)].sort();
+  if (ids.length === 0) return;
+  await tx.$queryRaw`
+    SELECT "id" FROM "customers" WHERE "id" = ANY(${ids}::text[]) AND "shopId" = app_current_shop_id() ORDER BY "id" FOR UPDATE`;
+}
+
+/**
  * Keeps `customers.openTicketCount` and `lastVisitAt` equal to the tickets (non-closed count, latest createdAt).
  * Called in the same transaction as every ticket write that can change them. Does not bump `version`
  * (that is for edits of the customer record itself).
+ *
+ * M1: the customer rows are locked first, in a separate statement, so the recount (a new statement, i.e. a new
+ * READ COMMITTED snapshot) sees the ticket changes of any transaction that held the lock before: two tickets of one
+ * customer closing at the same time can no longer both count the other as still open.
  */
 export async function refreshCustomerCounters(tx: ScopedTx, customerIds: Iterable<string>): Promise<void> {
-  for (const id of new Set(customerIds)) {
+  const unique = [...new Set(customerIds)].sort();
+  await lockCustomers(tx, unique);
+  for (const id of unique) {
     await tx.$executeRaw`
       UPDATE "customers" c SET
         "openTicketCount" = (SELECT count(*)::int FROM "tickets" t WHERE t."shopId" = c."shopId" AND t."customerId" = c."id" AND t."statusCategory" <> 'CLOSED'),

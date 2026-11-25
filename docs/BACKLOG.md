@@ -45,6 +45,10 @@ mismatched responses) and the two-tab Playwright test.
 through `selectOption()` (`e2e/tests/support/select.ts`): waits for the listbox and the option, clicks, then checks
 the trigger shows the choice. `--repeat-each=50 --retries=0` on `onboarding.spec.ts`: 200/200 passed.
 
-### Clean up expired ticket idempotency keys (Sprint 3)
+### Done in the Sprint 2 API fix: clean up expired ticket idempotency keys
 *Source: Sprint 2 API.*
-Expired `ticket_idempotency_keys` rows are only replaced when the same key is reused. Add a daily worker job that deletes rows older than the key TTL.
+Expired `ticket_idempotency_keys` rows were only replaced when the same key was reused. **Done:** the worker's
+`maintenance` queue runs `idempotency-key-purge` daily (03:43 UTC, BullMQ job scheduler), which calls
+`app_purge_ticket_idempotency_keys` and deletes rows older than `IDEMPOTENCY_WINDOW_MINUTES` (10 minutes; the
+function never deletes younger keys). The same queue runs the daily `passcode-sweep` (code review H1 backstop).
+Tests: `apps/api/test/maintenance.test.ts`, `apps/worker/src/maintenance-jobs.test.ts`.

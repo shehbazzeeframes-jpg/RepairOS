@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   type AssigneesResponse,
   canEditNote,
@@ -11,6 +11,7 @@ import {
   localDayRange,
   normalizePhone,
   parseTicketNumberQuery,
+  type StatusRef,
   type TicketCounts,
   type TicketListQuery,
   type TicketListResponse,
@@ -315,9 +316,15 @@ export function toNoteDto(
   };
 }
 
+const timelineLogger = new Logger('Timeline');
+
+/** Shown for an event whose status id no longer resolves (L3). */
+const UNKNOWN_STATUS = (id: string): StatusRef => ({ id, name: 'Unknown status', category: 'OPEN', colour: 'neutral', systemRole: null });
+
 /**
  * Stored events (ids only, `TicketEventDataByType`) → contract timeline items, resolving status names, people,
  * notes, ticket numbers, device labels (snapshotted) and customer names (current: "Erased customer" after erasure).
+ * An id that no longer resolves degrades (status → "Unknown status", logged as a warning) instead of failing.
  */
 export async function mapTimeline(tx: ScopedTx, rows: EventRow[], shop: ShopInfo, viewerId: string, now: Date): Promise<TicketTimelineItem[]> {
   const data = (r: EventRow) => (r.data ?? {}) as Record<string, unknown>;
@@ -345,7 +352,17 @@ export async function mapTimeline(tx: ScopedTx, rows: EventRow[], shop: ShopInfo
   const noteBy = new Map(notes.map((n) => [n.id, n]));
   const ticketBy = new Map(tickets.map((t) => [t.id, t]));
   const customerBy = new Map(customers.map((c) => [c.id, c.displayName]));
-  const status = (id: unknown) => statusRefOf(statuses, String(id));
+  const unknownIds = new Set<string>();
+  const status = (id: unknown) => {
+    const key = String(id);
+    if (statuses.has(key)) return statusRefOf(statuses, key);
+    // L3: data that does not match TicketEventDataByType (old rows, scripts) must not fail the whole timeline.
+    if (!unknownIds.has(key)) {
+      unknownIds.add(key);
+      timelineLogger.warn(`Timeline event refers to unknown status id ${JSON.stringify(key)}`);
+    }
+    return UNKNOWN_STATUS(key);
+  };
   const link = (id: unknown) => {
     const t = ticketBy.get(String(id));
     return t ? ticketLink(shop.prefix, t) : null;
@@ -371,7 +388,7 @@ export async function mapTimeline(tx: ScopedTx, rows: EventRow[], shop: ShopInfo
         out.push({ ...base, type: 'assigned', data: { from: user(d.fromUserId), to: user(d.toUserId) } });
         break;
       case 'fields_changed':
-        out.push({ ...base, type: 'fields_changed', data: { changes: (d.changes as { field: string; before: unknown; after: unknown }[]) ?? [] } });
+        out.push({ ...base, type: 'fields_changed', data: { changes: Array.isArray(d.changes) ? (d.changes as { field: string; before: unknown; after: unknown }[]) : [] } });
         break;
       case 'device_changed':
         out.push({ ...base, type: 'device_changed', data: d as TicketEventDataByType['device_changed'] });

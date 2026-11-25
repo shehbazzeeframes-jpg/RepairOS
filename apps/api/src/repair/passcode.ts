@@ -54,19 +54,52 @@ export async function auditPasscodeChange(
 }
 
 /**
+ * Row-locks a device (shop-scoped) for the rest of the transaction. Run it as its own statement BEFORE counting the
+ * device's tickets: under READ COMMITTED the next statement then sees every ticket change committed by a transaction
+ * that held the lock before us (H1: two tickets of one device closing at the same time). Check-in on an existing
+ * device takes the same lock, so a close never misses a ticket being created for the device.
+ */
+export async function lockDevice(tx: ScopedTx, deviceId: string): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "devices" WHERE "id" = ${deviceId} AND "shopId" = app_current_shop_id() FOR UPDATE`;
+}
+
+/**
+ * Deletes a device's passcode when the shop setting is on, the device has one, and no non-closed ticket other than
+ * `exceptTicketId` uses the device. Locks the device first (`lockDevice`). Returns true when deleted.
+ */
+async function deleteUnusedPasscode(tx: ScopedTx, opts: { deviceId: string; exceptTicketId: string | null; settingOn: boolean }): Promise<boolean> {
+  if (!opts.settingOn) return false;
+  await lockDevice(tx, opts.deviceId);
+  const device = await tx.device.findFirst({ where: { id: opts.deviceId }, select: { passcodeKeyVersion: true } });
+  if (!device || device.passcodeKeyVersion === null) return false;
+  const others = await tx.ticket.count({
+    where: { deviceId: opts.deviceId, statusCategory: { not: 'CLOSED' }, ...(opts.exceptTicketId ? { id: { not: opts.exceptTicketId } } : {}) },
+  });
+  if (others > 0) return false;
+  await tx.device.update({ where: { id: opts.deviceId }, data: { ...CLEARED_PASSCODE_COLUMNS } });
+  return true;
+}
+
+/**
+ * H1: a ticket moved off a device. Call AFTER the ticket row points at the new device: the old device's passcode is
+ * deleted (setting on) when no non-closed ticket uses it any more. No timeline event: the ticket's `device_changed`
+ * event tells the story, and the passcode no longer belongs to this ticket's device.
+ */
+export async function deletePasscodeOfReleasedDevice(tx: ScopedTx, opts: { deviceId: string; settingOn: boolean }): Promise<boolean> {
+  return deleteUnusedPasscode(tx, { deviceId: opts.deviceId, exceptTicketId: null, settingOn: opts.settingOn });
+}
+
+/**
  * DV5: when a ticket closes and the shop setting is on, delete its device's passcode unless another non-closed
- * ticket still needs it. Writes the `passcode_deleted` timeline event (system). Returns true when deleted.
+ * ticket still needs it (device row-locked first, H1). Writes the `passcode_deleted` timeline event (system).
+ * Returns true when deleted.
  */
 export async function deletePasscodeOnClose(
   tx: ScopedTx,
   opts: { shopId: string; ticketId: string; deviceId: string; settingOn: boolean },
 ): Promise<boolean> {
-  if (!opts.settingOn) return false;
-  const device = await tx.device.findFirst({ where: { id: opts.deviceId }, select: { passcodeKeyVersion: true } });
-  if (!device || device.passcodeKeyVersion === null) return false;
-  const others = await tx.ticket.count({ where: { deviceId: opts.deviceId, id: { not: opts.ticketId }, statusCategory: { not: 'CLOSED' } } });
-  if (others > 0) return false;
-  await tx.device.update({ where: { id: opts.deviceId }, data: { ...CLEARED_PASSCODE_COLUMNS } });
+  const deleted = await deleteUnusedPasscode(tx, { deviceId: opts.deviceId, exceptTicketId: opts.ticketId, settingOn: opts.settingOn });
+  if (!deleted) return false;
   await tx.ticketEvent.create({
     data: { shopId: opts.shopId, ticketId: opts.ticketId, actorUserId: null, type: 'passcode_deleted', data: { reason: 'closed' } },
   });

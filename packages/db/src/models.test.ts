@@ -9,7 +9,7 @@ describe('model classification', () => {
   });
 
   it('derives tenant models from the shopId field', () => {
-    expect([...TENANT_MODELS].sort()).toEqual(['AuditLog', 'Location', 'Membership', 'TaxRate']);
+    expect([...TENANT_MODELS].sort()).toEqual(['AuditLog', 'BusinessHours', 'Invitation', 'Location', 'Membership', 'TaxRate', 'TimeEntry']);
     for (const m of Prisma.dmmf.datamodel.models) {
       const hasShopId = m.fields.some((f) => f.name === 'shopId');
       expect(MODEL_CLASSES.kinds.get(m.name) === 'tenant', m.name).toBe(hasShopId);

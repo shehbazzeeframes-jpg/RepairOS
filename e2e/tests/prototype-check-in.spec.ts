@@ -43,7 +43,10 @@ async function open(page: Page) {
 async function finish(page: Page, keys: Keys, name: string, started: number) {
   const wall = (Date.now() - started) / 1000;
   await expect(page.getByText('Ticket T-1042 created')).toBeVisible();
-  const metrics = (await page.getByText(/^Checked in in/).textContent()) ?? '';
+  const metrics = (
+    (await page.getByText(/Checked in in .* keystrokes\./).textContent()) ?? ''
+  ).replace(/^.*(Checked in)/, '$1');
+  await expect(page.getByText(/passes createTicketSchema/)).toBeVisible();
   const line = `${name}: ${keys.search} keystrokes of search term + ${keys.after} after it = ${
     keys.search + keys.after
   } total; Playwright wall time ${wall.toFixed(1)} s; page says "${metrics.trim()}"`;
@@ -112,8 +115,9 @@ test('new customer and new device: keyboard only', async ({ page }) => {
   const none = page.getByRole('radio', { name: 'None' });
   await expect(none).toBeFocused();
   await keys.press('ArrowRight'); // PIN
+  await expect(page.getByLabel('PIN/passcode')).toBeVisible(); // a person sees the field appear
   await keys.press('Tab');
-  await expect(page.getByLabel('PIN / passcode')).toBeFocused();
+  await expect(page.getByLabel('PIN/passcode')).toBeFocused();
   await keys.type('1234');
   await keys.press('Enter'); // use this device
 
@@ -141,7 +145,9 @@ test('create with nothing filled lists what is missing and focuses the customer 
 }) => {
   const search = await open(page);
   await page.getByRole('button', { name: 'Create ticket' }).click();
-  await expect(page.getByText(/Before creating: choose a customer · choose a device/)).toBeVisible();
+  await expect(
+    page.getByText(/Before creating: choose a customer · choose a device/),
+  ).toBeVisible();
   await expect(search).toBeFocused();
 });
 

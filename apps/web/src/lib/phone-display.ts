@@ -1,4 +1,4 @@
-import { formatPhone, type CountryCode } from '@repairos/contracts';
+import { formatPhone, whatsappLink, type CountryCode } from '@repairos/contracts';
 
 export interface PhoneDisplay {
   /** National format for the shop's country, international otherwise ("07911 123456", "+92 300 1234567"). */
@@ -15,10 +15,9 @@ export function phoneDisplay(
   shopCountry: CountryCode,
   options: { whatsapp?: boolean } = {},
 ): PhoneDisplay {
-  const digits = e164.replace(/\D/g, '');
   return {
     text: formatPhone(e164, shopCountry),
     telHref: `tel:${e164}`,
-    whatsappHref: options.whatsapp && digits ? `https://wa.me/${digits}` : null,
+    whatsappHref: options.whatsapp ? whatsappLink(e164) : null,
   };
 }

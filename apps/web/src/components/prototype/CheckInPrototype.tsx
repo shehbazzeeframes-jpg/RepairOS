@@ -1,23 +1,24 @@
 'use client';
 
 /*
- * Check-in prototype (Sprint 2 A1, spec docs/screens/sprint2.md §2). Local mock data only.
+ * Check-in prototype (Sprint 2 A1; spec docs/screens/sprint2.md §2). Local mock data only, contract
+ * data and schemas everywhere else.
  *
- * One page, eight sections in a 760 column, a pinned footer with the running summary and
- * "Create ticket". Sections that are pickers (Customer, Device) collapse to a one-line summary with a
- * "Change" button once chosen; the rest stay open. Focus moves forward on every confirm so the
- * returning-customer path never needs Tab:
+ * One page, six section cards in a 760 column and a pinned footer with the running summary and
+ * "Create ticket". Picker sections (Customer, Device) collapse to a one-line summary with "Change"
+ * once chosen; the rest stay open. Focus moves forward on every confirm, so the returning-customer
+ * path never needs Tab:
  *
  *   type in Customer search → ↵ (first match) → ↵ (first device) → type issue → ↵ → ⌘↵ create
  *
- * The page counts keystrokes and time from load to create and shows them in the success banner, so
- * a hallway test gets numbers without extra tooling.
+ * On create the page builds the POST /api/tickets body, checks it with `createTicketSchema(country)`
+ * and shows the time and keystrokes since load, so a hallway test gets numbers without tooling.
  */
 
 import { Badge } from '@astryxdesign/core/Badge';
-import type { ISODateString } from '@astryxdesign/core/Calendar';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import type { ISODateString } from '@astryxdesign/core/Calendar';
 import { Card } from '@astryxdesign/core/Card';
 import { Collapsible } from '@astryxdesign/core/Collapsible';
 import { DateInput } from '@astryxdesign/core/DateInput';
@@ -36,73 +37,87 @@ import { TextInput } from '@astryxdesign/core/TextInput';
 import { ToggleButton, ToggleButtonGroup } from '@astryxdesign/core/ToggleButton';
 import { Typeahead, TypeaheadItem } from '@astryxdesign/core/Typeahead';
 import { VStack } from '@astryxdesign/core/VStack';
-import { CheckCircleIcon, PlusIcon } from '@heroicons/react/20/solid';
+import { CheckCircleIcon, CheckIcon, PlusIcon } from '@heroicons/react/20/solid';
 import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-} from 'react';
+  ACCESSORY_CODES,
+  ACCESSORY_LABELS,
+  CHECKLIST_ITEMS_BY_DEVICE_TYPE,
+  CHECKLIST_RESULT_KEYS,
+  CONSENT_SOURCE_LABELS,
+  DEVICE_TYPE_LABELS,
+  IMEI_DEVICE_TYPES,
+  ISSUE_LABELS,
+  LOCK_TYPE_LABELS,
+  NO_ACCESSORIES_LABEL,
+  TCPA_VERBAL_SMS_WARNING,
+  createTicketSchema,
+  deviceLabel,
+  dueInputProblem,
+  formatTicketNumber,
+  maskIdentifier,
+  parseMajorAmount,
+  type AccessoryCode,
+  type ChecklistItemKey,
+  type ChecklistResult,
+  type ConsentChannel,
+  type ConsentSource,
+  type CreateTicketInput,
+  type Device,
+  type DeviceTypeValue,
+  type IssueCode,
+  type LockType,
+} from '@repairos/contracts';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { PatternLockInput } from '@/components/ui/PatternLockInput';
 import { PhoneText } from '@/components/ui/PhoneText';
+import { RovingGroup } from '@/components/ui/RovingGroup';
 import { ShortcutHint, ShortcutHints } from '@/components/ui/ShortcutHint';
 import { patternError } from '@/lib/pattern-lock';
 import { useSession } from '@/lib/shop-context';
-import { addDays, formatLocalDate, todayInZone } from '@/lib/timezone';
+import { formatLocalDate, todayInZone } from '@/lib/timezone';
 import {
-  ACCESSORIES,
-  CHECKLIST,
-  DEVICE_TYPE_LABEL,
-  LOCK_LABEL,
-  TECHNICIANS,
+  MOCK_ASSIGNEES,
   filterIssues,
   imeiError,
+  mockCheckInContext,
   searchCustomers,
   searchModels,
   seedFromTyped,
-  type DeviceType,
-  type LockType,
   type MockCustomer,
-  type MockDevice,
 } from './check-in-model';
 
 // ---------- Types ----------
-
-type CheckState = 'PASS' | 'FAIL' | 'UNTESTED';
 
 interface NewCustomer {
   firstName: string;
   lastName: string;
   phone: string;
   email: string;
-  consentSms: boolean;
-  consentEmail: boolean;
-  consentWhatsapp: boolean;
+  consents: Record<ConsentChannel, boolean>;
+  consentSource: ConsentSource;
 }
 
 interface NewDevice {
-  type: DeviceType;
+  type: DeviceTypeValue;
   brand: string;
   model: string;
   colour: string;
   imei: string;
   lockType: LockType;
-  pin: string;
+  secret: string;
   pattern: number[];
 }
 
 type CustomerItem = {
   id: string;
   label: string;
-  auxiliaryData: { customer?: MockCustomer; device?: MockDevice; isNew?: boolean };
+  auxiliaryData: { customer?: MockCustomer; device?: Device; isNew?: boolean };
 };
 
 type ModelItem = {
   id: string;
   label: string;
-  auxiliaryData: { type?: DeviceType; brand?: string; model: string };
+  auxiliaryData: { type?: DeviceTypeValue; brand?: string; model: string };
 };
 
 const EMPTY_DEVICE: NewDevice = {
@@ -112,54 +127,67 @@ const EMPTY_DEVICE: NewDevice = {
   colour: '',
   imei: '',
   lockType: 'NONE',
-  pin: '',
+  secret: '',
   pattern: [],
 };
 
 const NEW_DEVICE = '__new__';
+const CONSENT_CHANNELS: { channel: ConsentChannel; label: string }[] = [
+  { channel: 'SMS', label: 'Marketing by SMS' },
+  { channel: 'EMAIL', label: 'Marketing by email' },
+  { channel: 'WHATSAPP', label: 'Marketing by WhatsApp' },
+];
+const GRANT_SOURCES: ConsentSource[] = ['IN_STORE_VERBAL', 'IN_STORE_SIGNED', 'ONLINE_FORM'];
+const CURRENCY_PREFIX = { GBP: '£', USD: '$', PKR: 'Rs' } as const;
 
 /** Keys that are typing, so single-letter shortcuts must not fire. */
 function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
-  if (el.isContentEditable) return true;
-  if (el instanceof HTMLTextAreaElement) return true;
-  if (el instanceof HTMLInputElement) {
+  if (el.isContentEditable || el instanceof HTMLTextAreaElement) return true;
+  if (el instanceof HTMLInputElement)
     return !['radio', 'checkbox', 'button', 'submit'].includes(el.type);
-  }
   return el.getAttribute('role') === 'combobox';
 }
 
-/** Today + n open days, skipping Sundays (mock business hours: closed Sunday). */
-function defaultDue(today: string, openDays: number): string {
-  let d = today;
-  let left = openDays;
-  while (left > 0) {
-    d = addDays(d, 1);
-    if (new Date(`${d}T12:00:00Z`).getUTCDay() !== 0) left -= 1;
-  }
-  return d;
+/**
+ * Moves focus once the target has rendered, and keeps it there for a few frames: an Astryx Typeahead
+ * moves focus to its selected-value chip right after a pick, which would otherwise win.
+ */
+function focusSoon(find: () => HTMLElement | null | undefined, frames = 4) {
+  let n = 0;
+  let cancelled = false;
+  // The next key press is the person moving on: stop re-asserting focus from then on.
+  const cancel = () => {
+    cancelled = true;
+  };
+  window.addEventListener('keydown', cancel, { capture: true, once: true });
+  const step = () => {
+    if (cancelled) return;
+    const el = find();
+    if (el && document.activeElement !== el) el.focus();
+    if (++n < frames) requestAnimationFrame(step);
+    else window.removeEventListener('keydown', cancel, { capture: true });
+  };
+  requestAnimationFrame(step);
 }
 
-/** Focus the control a visible label names (Astryx inputs take no id/ref, their labels do). */
+function focusIn(el: HTMLElement | null, selector: string) {
+  focusSoon(() => el?.querySelector<HTMLElement>(selector));
+}
+
+/** Focus the control a visible label names (Astryx inputs take no id or ref; their labels point at them). */
 function focusField(el: HTMLElement | null, label: string) {
-  requestAnimationFrame(() => {
+  focusSoon(() => {
     const match = [...(el?.querySelectorAll('label') ?? [])].find((l) =>
       (l.textContent ?? '').trim().startsWith(label),
     );
     const id = match?.getAttribute('for');
-    if (id) document.getElementById(id)?.focus();
+    return id ? document.getElementById(id) : null;
   });
 }
 
-function focusIn(el: HTMLElement | null, selector: string) {
-  // After a state change the target renders on the next frame.
-  requestAnimationFrame(() => {
-    const target = el?.querySelector<HTMLElement>(selector);
-    target?.focus();
-  });
-}
-
-const deviceLabel = (d: { brand: string; model: string }) => `${d.brand} ${d.model}`.trim();
+const byLastTicket = (a: Device, b: Device) =>
+  (b.lastTicketAt ?? '').localeCompare(a.lastTicketAt ?? '');
 
 // ---------- Section frame ----------
 
@@ -169,7 +197,6 @@ function SectionCard({
   summary,
   isDone,
   onChange,
-  changeLabel,
   isOptional,
   children,
   sectionRef,
@@ -179,7 +206,6 @@ function SectionCard({
   summary?: ReactNode;
   isDone?: boolean;
   onChange?: () => void;
-  changeLabel?: string;
   isOptional?: boolean;
   children?: ReactNode;
   sectionRef?: React.Ref<HTMLElement>;
@@ -188,7 +214,7 @@ function SectionCard({
   return (
     <Card padding={5}>
       <VStack gap={4} as="section" aria-labelledby={headingId} ref={sectionRef}>
-        <HStack gap={3} vAlign="center" hAlign="between" wrap="wrap">
+        <HStack gap={3} vAlign="center" hAlign="between">
           <HStack gap={2} vAlign="center">
             {isDone ? (
               <Icon icon={CheckCircleIcon} size="sm" color="success" label="Done" />
@@ -212,7 +238,12 @@ function SectionCard({
             ) : null}
           </HStack>
           {isDone && onChange ? (
-            <Button label={changeLabel ?? `Change ${title.toLowerCase()}`} size="sm" variant="ghost" onClick={onChange}>
+            <Button
+              label={`Change ${title.toLowerCase()}`}
+              size="sm"
+              variant="ghost"
+              onClick={onChange}
+            >
               Change
             </Button>
           ) : null}
@@ -226,10 +257,12 @@ function SectionCard({
 // ---------- Page ----------
 
 export function CheckInPrototype() {
-  const { shop } = useSession();
-  const today = todayInZone(shop.timezone);
+  const { me, shop } = useSession();
+  // GET /api/tickets/check-in-context in the real page.
+  const [ctx] = useState(() => mockCheckInContext(shop));
+  const today = todayInZone(ctx.timezone);
 
-  // Instrumentation (DoD: time-to-create and keystrokes).
+  // Instrumentation (DoD: time-to-create and keystrokes; PostHog `ticket_created` in the real page).
   const startedAt = useRef<number>(0);
   const keystrokes = useRef(0);
   useEffect(() => {
@@ -253,79 +286,140 @@ export function CheckInPrototype() {
   const [deviceDone, setDeviceDone] = useState(false);
 
   const [issueFilter, setIssueFilter] = useState('');
-  const [issues, setIssues] = useState<string[]>([]);
+  const [issues, setIssues] = useState<IssueCode[]>([]);
   const [description, setDescription] = useState('');
 
-  const [checklist, setChecklist] = useState<Record<string, CheckState>>(
-    () => Object.fromEntries(CHECKLIST.map((c) => [c, 'UNTESTED'])) as Record<string, CheckState>,
+  const [checklist, setChecklist] = useState<Partial<Record<ChecklistItemKey, ChecklistResult>>>(
+    {},
   );
   const [conditionNotes, setConditionNotes] = useState('');
-  const [accessories, setAccessories] = useState<string[]>([]);
+  const [accessories, setAccessories] = useState<AccessoryCode[]>([]);
+  const [accessoriesOther, setAccessoriesOther] = useState('');
   const [estimate, setEstimate] = useState('');
-  const [due, setDue] = useState<string>(() => defaultDue(today, 2));
-  const [priority, setPriority] = useState('NORMAL');
-  const [technician, setTechnician] = useState<string>('');
+  const [due, setDue] = useState<string>(ctx.defaultDue.date);
+  const [priority, setPriority] = useState<'NORMAL' | 'URGENT'>('NORMAL');
+  const [assignee, setAssignee] = useState<string>('');
 
   const [showErrors, setShowErrors] = useState(false);
-  const [created, setCreated] = useState<null | { number: string; seconds: number; keys: number; summary: string }>(
-    null,
-  );
+  const [created, setCreated] = useState<null | {
+    number: string;
+    seconds: number;
+    keys: number;
+    summary: string;
+    payloadOk: boolean;
+    payloadIssues: string[];
+  }>(null);
 
   const customerRef = useRef<HTMLElement>(null);
   const deviceRef = useRef<HTMLElement>(null);
   const issuesRef = useRef<HTMLElement>(null);
-  const footerRef = useRef<HTMLElement>(null);
 
   // ----- Derived -----
-  const devices = useMemo(
-    () => [...(customer?.devices ?? [])].sort((a, b) => b.lastUsed.localeCompare(a.lastUsed)),
-    [customer],
-  );
+  const devices = useMemo(() => [...(customer?.devices ?? [])].sort(byLastTicket), [customer]);
   const chosenDevice = devices.find((d) => d.id === deviceChoice) ?? null;
+  const deviceType: DeviceTypeValue = chosenDevice?.type ?? newDevice?.type ?? 'PHONE';
+  const checklistItems = CHECKLIST_ITEMS_BY_DEVICE_TYPE[deviceType];
   const customerName = customer
-    ? customer.name
+    ? customer.displayName
     : newCustomer
       ? `${newCustomer.firstName} ${newCustomer.lastName}`.trim()
       : '';
   const deviceName = chosenDevice
     ? deviceLabel(chosenDevice)
-    : newDevice && newDevice.model
+    : newDevice?.model
       ? deviceLabel(newDevice)
       : '';
-  const filteredIssues = filterIssues(issueFilter);
-  const failCount = Object.values(checklist).filter((v) => v === 'FAIL').length;
-  const passCount = Object.values(checklist).filter((v) => v === 'PASS').length;
+  const filteredIssues = filterIssues(issueFilter, deviceType);
+  const results = checklistItems.map((i) => checklist[i.key] ?? 'UNTESTED');
+  const passCount = results.filter((r) => r === 'PASS').length;
+  const failCount = results.filter((r) => r === 'FAIL').length;
+  const estimateMinor = estimate.trim() ? parseMajorAmount(estimate, ctx.currency) : null;
+  const dueProblem = dueInputProblem(due, null, new Date(), ctx.timezone);
 
   const problems: { key: 'customer' | 'device' | 'issues'; text: string }[] = [];
-  if (!customerDone) {
+  if (!customerDone)
     problems.push({
       key: 'customer',
       text: newCustomer ? 'Finish the new customer' : 'Choose a customer',
     });
-  }
-  if (!deviceDone) {
-    problems.push({
-      key: 'device',
-      text: 'Choose a device',
-    });
-  }
+  if (!deviceDone) problems.push({ key: 'device', text: 'Choose a device' });
   if (issues.length === 0 && !description.trim()) {
-    problems.push({
-      key: 'issues',
-      text: 'Pick an issue or describe the problem',
-    });
+    problems.push({ key: 'issues', text: 'Pick an issue or describe the problem' });
   }
 
   const summaryLine = [
     customerName || 'No customer',
     deviceName || 'No device',
-    issues.length ? issues.join(', ') : description.trim() ? 'Described' : 'No issue',
-    `Due ${formatLocalDate(due, shop.locale, false)}`,
+    issues.length
+      ? issues.map((c) => ISSUE_LABELS[c]).join(', ')
+      : description.trim()
+        ? 'Described'
+        : 'No issue',
+    `Due ${formatLocalDate(due, ctx.locale, false)}`,
     priority === 'URGENT' ? 'Urgent' : null,
-    TECHNICIANS.find((t) => t.id === technician)?.name ?? 'Unassigned',
+    MOCK_ASSIGNEES.find((a) => a.userId === assignee)?.name ?? 'Unassigned',
   ]
     .filter(Boolean)
     .join(' · ');
+
+  /** The POST /api/tickets body this page would send (with `Idempotency-Key` and `X-Shop-Id`). */
+  const buildPayload = (): CreateTicketInput => {
+    const nd = newDevice;
+    const passcode =
+      nd?.lockType === 'PIN' || nd?.lockType === 'PASSWORD'
+        ? { lockType: nd.lockType, value: nd.secret }
+        : nd?.lockType === 'PATTERN'
+          ? { lockType: 'PATTERN' as const, pattern: nd.pattern }
+          : nd
+            ? { lockType: nd.lockType }
+            : undefined;
+    return {
+      ...(customer
+        ? { customerId: customer.id }
+        : {
+            newCustomer: {
+              kind: 'PERSON',
+              firstName: newCustomer?.firstName,
+              lastName: newCustomer?.lastName,
+              email: newCustomer?.email,
+              phones: newCustomer?.phone ? [{ number: newCustomer.phone, label: 'MOBILE' }] : [],
+              consents: CONSENT_CHANNELS.filter((c) => newCustomer?.consents[c.channel]).map(
+                (c) => ({
+                  channel: c.channel,
+                  state: 'GRANTED' as const,
+                  source: newCustomer?.consentSource,
+                }),
+              ),
+            },
+          }),
+      ...(chosenDevice
+        ? { deviceId: chosenDevice.id }
+        : {
+            newDevice: {
+              type: nd?.type ?? 'PHONE',
+              brand: nd?.brand ?? '',
+              model: nd?.model ?? '',
+              colour: nd?.colour || null,
+              imei: nd?.imei || null,
+              serial: null,
+              notes: null,
+              passcode: passcode as never,
+            },
+          }),
+      issues: issues.map((code) => ({ code })),
+      description: description || null,
+      checklist,
+      conditionNotes: conditionNotes || null,
+      accessories,
+      accessoriesOther: accessoriesOther || null,
+      estimate:
+        estimateMinor === null ? null : { amountMinor: estimateMinor, currency: ctx.currency },
+      dueDate: due,
+      dueTime: null,
+      priority,
+      assigneeUserId: assignee || null,
+    };
+  };
 
   // ----- Actions -----
   const sectionRefs = { customer: customerRef, device: deviceRef, issues: issuesRef };
@@ -337,7 +431,17 @@ export function CheckInPrototype() {
       return;
     }
     const seconds = (performance.now() - startedAt.current) / 1000;
-    setCreated({ number: 'T-1042', seconds, keys: keystrokes.current, summary: summaryLine });
+    const parsed = createTicketSchema(ctx.country).safeParse(buildPayload());
+    setCreated({
+      number: formatTicketNumber(ctx.numberPrefix, 1042),
+      seconds,
+      keys: keystrokes.current,
+      summary: summaryLine,
+      payloadOk: parsed.success,
+      payloadIssues: parsed.success
+        ? []
+        : parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
+    });
   };
 
   const pickCustomer = (item: CustomerItem | null) => {
@@ -345,17 +449,25 @@ export function CheckInPrototype() {
     if (item.auxiliaryData.isNew) {
       const seed = seedFromTyped(query);
       setCustomer(null);
-      setNewCustomer({ ...seed, consentSms: false, consentEmail: false, consentWhatsapp: false });
+      setNewCustomer({
+        ...seed,
+        consents: { SMS: false, EMAIL: false, WHATSAPP: false },
+        consentSource: 'IN_STORE_VERBAL',
+      });
       setNewDevice({ ...EMPTY_DEVICE });
       setDeviceChoice(NEW_DEVICE);
-      focusIn(customerRef.current, seed.firstName ? 'input[type="tel"]' : 'input');
+      // Focus the first field the typed text didn't fill.
+      focusField(
+        customerRef.current,
+        seed.firstName ? (seed.phone ? 'Email' : 'Phone') : 'First name',
+      );
       return;
     }
     const c = item.auxiliaryData.customer!;
     setCustomer(c);
     setNewCustomer(null);
     setCustomerDone(true);
-    const sorted = [...c.devices].sort((a, b) => b.lastUsed.localeCompare(a.lastUsed));
+    const sorted = [...c.devices].sort(byLastTicket);
     if (item.auxiliaryData.device) {
       // Scanned IMEI: customer and device in one go.
       setDeviceChoice(item.auxiliaryData.device.id);
@@ -375,7 +487,8 @@ export function CheckInPrototype() {
 
   const confirmNewCustomer = () => {
     if (!newCustomer) return;
-    const ok = newCustomer.firstName.trim() && (newCustomer.phone.trim() || newCustomer.email.trim());
+    const ok =
+      newCustomer.firstName.trim() && (newCustomer.phone.trim() || newCustomer.email.trim());
     if (!ok) {
       setShowErrors(true);
       return;
@@ -387,12 +500,10 @@ export function CheckInPrototype() {
   const changeCustomer = () => {
     setCustomerDone(false);
     setDeviceDone(false);
-    if (newCustomer) {
-      focusIn(customerRef.current, 'input');
-      return;
+    if (!newCustomer) {
+      setCustomer(null);
+      setQuery('');
     }
-    setCustomer(null);
-    setQuery('');
     focusIn(customerRef.current, 'input');
   };
 
@@ -417,11 +528,11 @@ export function CheckInPrototype() {
     setNewDevice({ ...EMPTY_DEVICE });
     setModelItem(null);
     setDeviceDone(false);
-    focusIn(deviceRef.current, 'input[role="combobox"], input');
+    focusIn(deviceRef.current, 'input');
   };
 
-  const toggleIssue = (issue: string) =>
-    setIssues((prev) => (prev.includes(issue) ? prev.filter((i) => i !== issue) : [...prev, issue]));
+  const toggleIssue = (code: IssueCode) =>
+    setIssues((prev) => (prev.includes(code) ? prev.filter((i) => i !== code) : [...prev, code]));
 
   // ----- Keyboard -----
   const onFormKeyDown = (e: KeyboardEvent<HTMLElement>) => {
@@ -436,7 +547,12 @@ export function CheckInPrototype() {
       else focusIn(customerRef.current, 'input');
       return;
     }
-    if (e.key === 'Escape' && newCustomer && !customerDone && customerRef.current?.contains(e.target as Node)) {
+    if (
+      e.key === 'Escape' &&
+      newCustomer &&
+      !customerDone &&
+      customerRef.current?.contains(e.target as Node)
+    ) {
       e.preventDefault();
       setNewCustomer(null);
       setNewDevice(null);
@@ -445,45 +561,43 @@ export function CheckInPrototype() {
   };
 
   const onDeviceListKeyDown = (e: KeyboardEvent<HTMLElement>) => {
-    if (e.target instanceof HTMLInputElement && e.target.type === 'radio') {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        if (deviceChoice === NEW_DEVICE) startNewDevice();
-        else confirmDevice();
-      } else if (e.key.toLowerCase() === 'd' && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault();
-        startNewDevice();
-      }
+    if (!(e.target instanceof HTMLInputElement) || e.target.type !== 'radio') return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (deviceChoice === NEW_DEVICE) startNewDevice();
+      else confirmDevice();
+    } else if (e.key.toLowerCase() === 'd' && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      startNewDevice();
     }
   };
 
-  const onChecklistKeyDown = (e: KeyboardEvent<HTMLElement>, item: string, idx: number) => {
-    const map: Record<string, CheckState> = { p: 'PASS', f: 'FAIL', u: 'UNTESTED' };
-    const next = map[e.key.toLowerCase()];
-    if (!next || e.metaKey || e.ctrlKey) return;
+  const onChecklistKeyDown = (e: KeyboardEvent<HTMLElement>, key: ChecklistItemKey) => {
+    const result = CHECKLIST_RESULT_KEYS[e.key.toLowerCase() as 'p' | 'f' | 'u'];
+    if (!result || e.metaKey || e.ctrlKey) return;
     e.preventDefault();
-    setChecklist((c) => ({ ...c, [item]: next }));
-    // Move down to the next row's segmented control (P/F/U "set and move down").
-    const nextRow = e.currentTarget.nextElementSibling;
-    if (idx < CHECKLIST.length - 1) {
-      nextRow
-        ?.querySelector<HTMLElement>('[aria-checked="true"], input:checked, [role="radio"]')
-        ?.focus();
-    }
+    setChecklist((c) => ({ ...c, [key]: result }));
+    // "Set and move down": focus the next row's segmented control.
+    const next = e.currentTarget.nextElementSibling;
+    focusSoon(() => next?.querySelector<HTMLElement>('[aria-checked="true"], input:checked'), 2);
   };
 
-  // ----- Customer search source -----
+  // ----- Search sources (GET /api/customers?q= and model suggestions in the real page) -----
   const customerSource = useMemo(
     () => ({
       bootstrap: () => [] as CustomerItem[],
-      search: (q: string): CustomerItem[] => {
-        const matches = searchCustomers(q).map<CustomerItem>((m) => ({
+      search: (q: string): CustomerItem[] => [
+        ...searchCustomers(q).map<CustomerItem>((m) => ({
           id: m.customer.id,
-          label: m.customer.name,
+          label: m.customer.displayName,
           auxiliaryData: { customer: m.customer, device: m.device },
-        }));
-        return [...matches, { id: '__new_customer__', label: `New customer “${q.trim()}”`, auxiliaryData: { isNew: true } }];
-      },
+        })),
+        {
+          id: '__new_customer__',
+          label: `New customer “${q.trim()}”`,
+          auxiliaryData: { isNew: true },
+        },
+      ],
     }),
     [],
   );
@@ -494,7 +608,7 @@ export function CheckInPrototype() {
       search: (q: string): ModelItem[] => [
         ...searchModels(q).map<ModelItem>((m) => ({
           id: `${m.brand}|${m.model}`,
-          label: `${m.brand} ${m.model}`,
+          label: deviceLabel(m),
           auxiliaryData: m,
         })),
         { id: '__free__', label: `Use “${q.trim()}”`, auxiliaryData: { model: q.trim() } },
@@ -509,14 +623,15 @@ export function CheckInPrototype() {
       <VStack gap={6} maxWidth={760}>
         <Heading level={1}>New ticket</Heading>
         <Banner
-          status="success"
+          status={created.payloadOk ? 'success' : 'error'}
           title={`Ticket ${created.number} created`}
-          description={created.summary}
-        >
-          <Text>
-            Checked in in {created.seconds.toFixed(1)} s with {created.keys} keystrokes.
-          </Text>
-        </Banner>
+          description={`${created.summary}. Checked in in ${created.seconds.toFixed(1)} s with ${created.keys} keystrokes.`}
+        />
+        <Text color="secondary">
+          {created.payloadOk
+            ? 'The request body passes createTicketSchema for this shop: the page maps one to one onto POST /api/tickets.'
+            : `The request body fails createTicketSchema: ${created.payloadIssues.join('; ')}`}
+        </Text>
         <HStack gap={3}>
           <Button
             label={`Check in another device for ${customerName}`}
@@ -532,9 +647,17 @@ export function CheckInPrototype() {
   const nc = newCustomer;
   const nd = newDevice;
   const imeiProblem = nd ? imeiError(nd.imei) : null;
+  const anyConsent = nc ? Object.values(nc.consents).some(Boolean) : false;
 
   return (
-    <VStack gap={4} maxWidth={760} as="form" aria-labelledby="checkin-title" onKeyDown={onFormKeyDown} onSubmit={(e: React.FormEvent) => e.preventDefault()}>
+    <VStack
+      gap={4}
+      maxWidth={760}
+      as="form"
+      aria-labelledby="checkin-title"
+      onKeyDown={onFormKeyDown}
+      onSubmit={(e: React.FormEvent) => e.preventDefault()}
+    >
       <VStack gap={2}>
         <HStack gap={3} vAlign="center" wrap="wrap">
           <Heading level={1} id="checkin-title">
@@ -545,10 +668,10 @@ export function CheckInPrototype() {
         <ShortcutHints
           label="Check-in shortcuts"
           hints={[
-            { keys: 'enter', label: 'Choose / next' },
+            { keys: 'enter', label: 'Choose and go on' },
             { keys: 'mod+enter', label: 'Create ticket' },
             { keys: '/', label: 'Customer search' },
-            { keys: 'escape', label: 'Close / cancel' },
+            { keys: 'escape', label: 'Close or cancel' },
           ]}
         />
       </VStack>
@@ -558,7 +681,7 @@ export function CheckInPrototype() {
         index={1}
         title="Customer"
         isDone={customerDone}
-        summary={customer ? `${customer.name}` : nc ? `${customerName} (new)` : undefined}
+        summary={customer ? customer.displayName : nc ? `${customerName} (new)` : undefined}
         onChange={changeCustomer}
         sectionRef={customerRef}
       >
@@ -580,7 +703,11 @@ export function CheckInPrototype() {
               emptySearchText="No customers found"
               renderItem={(item) =>
                 item.auxiliaryData.isNew ? (
-                  <TypeaheadItem item={item} icon={<Icon icon={PlusIcon} size="sm" />} description="Add them without leaving check-in" />
+                  <TypeaheadItem
+                    item={item}
+                    icon={<Icon icon={PlusIcon} size="sm" />}
+                    description="Add them without leaving check-in"
+                  />
                 ) : (
                   <TypeaheadItem
                     item={item}
@@ -589,7 +716,9 @@ export function CheckInPrototype() {
                       item.auxiliaryData.device
                         ? `IMEI match: ${deviceLabel(item.auxiliaryData.device)}`
                         : item.auxiliaryData.customer!.devices[0]
-                          ? deviceLabel(item.auxiliaryData.customer!.devices[0])
+                          ? deviceLabel(
+                              [...item.auxiliaryData.customer!.devices].sort(byLastTicket)[0]!,
+                            )
                           : 'No devices yet',
                     ]
                       .filter(Boolean)
@@ -614,9 +743,18 @@ export function CheckInPrototype() {
                 isRequired
                 value={nc.firstName}
                 onChange={(v) => setNewCustomer({ ...nc, firstName: v })}
-                status={showErrors && !nc.firstName.trim() ? { type: 'error', message: 'Enter a first name' } : undefined}
+                status={
+                  showErrors && !nc.firstName.trim()
+                    ? { type: 'error', message: 'Enter a first name' }
+                    : undefined
+                }
               />
-              <TextInput label="Last name" isOptional value={nc.lastName} onChange={(v) => setNewCustomer({ ...nc, lastName: v })} />
+              <TextInput
+                label="Last name"
+                isOptional
+                value={nc.lastName}
+                onChange={(v) => setNewCustomer({ ...nc, lastName: v })}
+              />
               <TextInput
                 label="Phone"
                 type="tel"
@@ -624,27 +762,70 @@ export function CheckInPrototype() {
                 value={nc.phone}
                 onChange={(v) => setNewCustomer({ ...nc, phone: v })}
                 onEnter={confirmNewCustomer}
-                description="Mobile · used for repair updates"
+                description="Mobile, for repair updates"
                 status={
                   showErrors && !nc.phone.trim() && !nc.email.trim()
                     ? { type: 'error', message: 'Add a phone number or an email' }
                     : undefined
                 }
               />
-              <TextInput label="Email" type="email" isOptional value={nc.email} onChange={(v) => setNewCustomer({ ...nc, email: v })} onEnter={confirmNewCustomer} />
+              <TextInput
+                label="Email"
+                type="email"
+                isOptional
+                value={nc.email}
+                onChange={(v) => setNewCustomer({ ...nc, email: v })}
+                onEnter={confirmNewCustomer}
+              />
             </Grid>
             <Collapsible
               defaultIsOpen={false}
-              trigger={<Text weight="medium">Marketing consent · none given</Text>}
+              trigger={
+                <Text weight="medium">
+                  Marketing consent ·{' '}
+                  {anyConsent
+                    ? CONSENT_CHANNELS.filter((c) => nc.consents[c.channel])
+                        .map((c) => c.channel)
+                        .join(', ')
+                    : 'none given'}
+                </Text>
+              }
             >
               <VStack gap={2} paddingBlockStart={2}>
-                <Switch label="Marketing by SMS" value={nc.consentSms} onChange={(v) => setNewCustomer({ ...nc, consentSms: v })} />
-                <Switch label="Marketing by email" value={nc.consentEmail} onChange={(v) => setNewCustomer({ ...nc, consentEmail: v })} />
-                <Switch label="Marketing by WhatsApp" value={nc.consentWhatsapp} onChange={(v) => setNewCustomer({ ...nc, consentWhatsapp: v })} />
+                {CONSENT_CHANNELS.map((c) => (
+                  <Switch
+                    key={c.channel}
+                    label={c.label}
+                    value={nc.consents[c.channel]}
+                    onChange={(v) =>
+                      setNewCustomer({ ...nc, consents: { ...nc.consents, [c.channel]: v } })
+                    }
+                  />
+                ))}
+                {anyConsent ? (
+                  <Selector
+                    label="How was consent given?"
+                    value={nc.consentSource}
+                    onChange={(v) =>
+                      v && setNewCustomer({ ...nc, consentSource: v as ConsentSource })
+                    }
+                    options={GRANT_SOURCES.map((s) => ({
+                      value: s,
+                      label: CONSENT_SOURCE_LABELS[s],
+                    }))}
+                    description={
+                      ctx.country === 'US' &&
+                      nc.consents.SMS &&
+                      nc.consentSource === 'IN_STORE_VERBAL'
+                        ? TCPA_VERBAL_SMS_WARNING
+                        : undefined
+                    }
+                  />
+                ) : null}
               </VStack>
             </Collapsible>
             <HStack gap={3} vAlign="center" wrap="wrap">
-              <Button label="Use this customer" variant="secondary" onClick={confirmNewCustomer} />
+              <Button label="Use this customer" onClick={confirmNewCustomer} />
               <ShortcutHint keys="enter" label="in Phone or Email" />
               <ShortcutHint keys="escape" label="back to search" />
             </HStack>
@@ -654,12 +835,18 @@ export function CheckInPrototype() {
         {customerDone && customer ? (
           <VStack gap={3}>
             <HStack gap={4} wrap="wrap" vAlign="center">
-              <PhoneText e164={customer.phone} shopCountry={shop.country} isCallable />
+              <PhoneText e164={customer.primaryPhone} shopCountry={ctx.country} isCallable />
               {customer.email ? <Text color="secondary">{customer.email}</Text> : null}
             </HStack>
-            {customer.note ? <Banner status="info" title="Customer note" description={customer.note} /> : null}
+            {customer.notes ? (
+              <Banner status="info" title="Customer note" description={customer.notes} />
+            ) : null}
             {customer.archived ? (
-              <Banner status="warning" title="Restored" description="This customer was archived. Creating the ticket restores them." />
+              <Banner
+                status="warning"
+                title="Archived customer"
+                description="Restored. They're back in lists and search."
+              />
             ) : null}
           </VStack>
         ) : null}
@@ -690,29 +877,33 @@ export function CheckInPrototype() {
                   value={d.id}
                   label={deviceLabel(d)}
                   description={[
-                    DEVICE_TYPE_LABEL[d.type],
+                    DEVICE_TYPE_LABELS[d.type],
                     d.colour,
-                    d.imei ? `IMEI …${d.imei.slice(-4)}` : null,
-                    d.lockType === 'NONE' ? 'No lock' : `${LOCK_LABEL[d.lockType]} on file`,
-                    d.openTicket ? `${d.openTicket} is still open` : null,
+                    d.imei ? `IMEI ${maskIdentifier(d.imei)}` : null,
+                    d.passcodeOnFile ? 'Passcode on file' : LOCK_TYPE_LABELS[d.lockType],
+                    d.openTicket ? `${d.openTicket.numberLabel} still open` : null,
                   ]
                     .filter(Boolean)
                     .join(' · ')}
                 />
               ))}
-              <RadioListItem value={NEW_DEVICE} label="New device" description="Press D from the list" />
+              <RadioListItem
+                value={NEW_DEVICE}
+                label="New device"
+                description="Or press D in this list"
+              />
             </RadioList>
             {chosenDevice?.openTicket ? (
               <Banner
                 status="warning"
-                title={`${chosenDevice.openTicket} is still open for this device`}
+                title={`${chosenDevice.openTicket.numberLabel} is still open for this device`}
                 description="You can still check it in, for example for a second fault."
               />
             ) : null}
             <ShortcutHints
               label="Device list shortcuts"
               hints={[
-                { keys: 'up+down', label: 'Choose' },
+                { keys: ['up', 'down'], label: 'Choose' },
                 { keys: 'enter', label: 'Use device' },
                 { keys: 'd', label: 'New device' },
               ]}
@@ -735,57 +926,85 @@ export function CheckInPrototype() {
                   return;
                 }
                 const a = item.auxiliaryData;
-                setNewDevice({ ...nd, model: a.model, brand: a.brand ?? nd.brand, type: a.type ?? nd.type });
-                focusField(deviceRef.current, 'IMEI');
+                const type = a.type ?? nd.type;
+                setNewDevice({ ...nd, model: a.model, brand: a.brand ?? nd.brand, type });
+                focusField(deviceRef.current, IMEI_DEVICE_TYPES.includes(type) ? 'IMEI' : 'Serial');
               }}
               minQueryLength={1}
               maxMenuItems={8}
-              status={showErrors && !nd.model ? { type: 'error', message: 'Enter the model' } : undefined}
+              status={
+                showErrors && !nd.model ? { type: 'error', message: 'Enter the model' } : undefined
+              }
             />
             <Grid columns={{ minWidth: 180, max: 3 }} gap={3}>
               <Selector
                 label="Type"
                 value={nd.type}
-                onChange={(v) => v && setNewDevice({ ...nd, type: v as DeviceType })}
-                options={Object.entries(DEVICE_TYPE_LABEL).map(([value, label]) => ({ value, label }))}
+                onChange={(v) => v && setNewDevice({ ...nd, type: v as DeviceTypeValue })}
+                options={Object.entries(DEVICE_TYPE_LABELS).map(([value, label]) => ({
+                  value,
+                  label,
+                }))}
               />
-              <TextInput label="Brand" value={nd.brand} onChange={(v) => setNewDevice({ ...nd, brand: v })} />
-              <TextInput label="Colour" isOptional value={nd.colour} onChange={(v) => setNewDevice({ ...nd, colour: v })} />
+              <TextInput
+                label="Brand"
+                value={nd.brand}
+                onChange={(v) => setNewDevice({ ...nd, brand: v })}
+              />
+              <TextInput
+                label="Colour"
+                isOptional
+                value={nd.colour}
+                onChange={(v) => setNewDevice({ ...nd, colour: v })}
+              />
             </Grid>
             <Grid columns={{ minWidth: 220, max: 2 }} gap={3}>
-              <TextInput
+              {IMEI_DEVICE_TYPES.includes(nd.type) ? (
+                <TextInput
                   label="IMEI"
                   isOptional
                   inputMode="numeric"
                   description="Scan it, or dial *#06#"
                   value={nd.imei}
                   onChange={(v) => setNewDevice({ ...nd, imei: v })}
-                  // A scanner ends with Enter: move on instead of submitting (DV edge case).
+                  // A scanner ends with Enter: move on to Lock instead of submitting (DV edge case).
                   onEnter={() =>
-                  focusIn(deviceRef.current, '[role="radiogroup"][aria-label="Lock"] [aria-checked="true"]')
-                }
-                  status={nd.imei && imeiProblem && (showErrors || nd.imei.replace(/\D/g, '').length >= 15) ? { type: 'error', message: imeiProblem } : undefined}
+                    focusIn(
+                      deviceRef.current,
+                      '[role="radiogroup"][aria-label="Lock"] [aria-checked="true"]',
+                    )
+                  }
+                  status={
+                    imeiProblem && (showErrors || nd.imei.replace(/\D/g, '').length >= 15)
+                      ? { type: 'error', message: imeiProblem }
+                      : undefined
+                  }
                 />
+              ) : null}
               <TextInput label="Serial number" isOptional value="" onChange={() => undefined} />
             </Grid>
             <VStack gap={2}>
               <Text weight="medium">Lock</Text>
-              <SegmentedControl label="Lock" value={nd.lockType} onChange={(v) => setNewDevice({ ...nd, lockType: v as LockType })}>
-                {(Object.keys(LOCK_LABEL) as LockType[]).map((k) => (
-                  <SegmentedControlItem key={k} value={k} label={LOCK_LABEL[k]} />
+              <SegmentedControl
+                label="Lock"
+                value={nd.lockType}
+                onChange={(v) => setNewDevice({ ...nd, lockType: v as LockType })}
+              >
+                {(Object.keys(LOCK_TYPE_LABELS) as LockType[]).map((k) => (
+                  <SegmentedControlItem key={k} value={k} label={LOCK_TYPE_LABELS[k]} />
                 ))}
               </SegmentedControl>
             </VStack>
             {nd.lockType === 'PIN' || nd.lockType === 'PASSWORD' ? (
               <TextInput
-                label={nd.lockType === 'PIN' ? 'PIN / passcode' : 'Password'}
+                label={LOCK_TYPE_LABELS[nd.lockType]}
                 type="password"
                 inputMode={nd.lockType === 'PIN' ? 'numeric' : 'text'}
                 autoComplete="off"
-                value={nd.pin}
-                onChange={(v) => setNewDevice({ ...nd, pin: v })}
+                value={nd.secret}
+                onChange={(v) => setNewDevice({ ...nd, secret: v })}
                 onEnter={confirmDevice}
-                description="Encrypted. Shown to staff only on an open ticket, and deleted when the repair is closed."
+                description="Encrypted. Staff see it only on an open ticket; deleted when the repair is closed."
               />
             ) : null}
             {nd.lockType === 'PATTERN' ? (
@@ -797,7 +1016,7 @@ export function CheckInPrototype() {
               />
             ) : null}
             <HStack gap={3} vAlign="center" wrap="wrap">
-              <Button label="Use this device" variant="secondary" onClick={confirmDevice} />
+              <Button label="Use this device" onClick={confirmDevice} />
               {devices.length > 0 ? (
                 <Button
                   label="Back to their devices"
@@ -819,7 +1038,7 @@ export function CheckInPrototype() {
           <TextInput
             label="Find an issue"
             isLabelHidden
-            placeholder="Type to filter, ↵ to add (e.g. scr → Screen cracked)"
+            placeholder="Type to filter, ↵ to add (scr → Screen cracked)"
             startIcon="search"
             value={issueFilter}
             onChange={setIssueFilter}
@@ -838,25 +1057,35 @@ export function CheckInPrototype() {
             }}
             status={
               showErrors && issues.length === 0 && !description.trim()
-                ? { type: 'error', message: 'Pick at least one issue or describe the problem' }
+                ? { type: 'error', message: 'Choose an issue or describe the problem' }
                 : undefined
             }
           />
-          <ToggleButtonGroup
-            label="Common issues"
-            type="multiple"
-            value={issues}
-            onChange={(v) => setIssues((v as string[]) ?? [])}
-            size="sm"
-          >
-            {(issueFilter.trim() ? filteredIssues : filterIssues('')).map((issue) => (
-              <ToggleButton key={issue} value={issue} label={issue}>
-                {issue}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
+          <RovingGroup>
+            <ToggleButtonGroup
+              label="Common issues"
+              type="multiple"
+              value={issues}
+              onChange={(v) => setIssues(((v as string[]) ?? []) as IssueCode[])}
+              size="sm"
+            >
+              {filteredIssues.map((code) => (
+                <ToggleButton
+                  key={code}
+                  value={code}
+                  label={ISSUE_LABELS[code]}
+                  pressedIcon={<Icon icon={CheckIcon} size="sm" />}
+                >
+                  {ISSUE_LABELS[code]}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+          </RovingGroup>
           {issueFilter.trim() && filteredIssues[0] ? (
-            <ShortcutHint keys="enter" label={`${issues.includes(filteredIssues[0]) ? 'removes' : 'adds'} “${filteredIssues[0]}”`} />
+            <ShortcutHint
+              keys="enter"
+              label={`${issues.includes(filteredIssues[0]) ? 'removes' : 'adds'} “${ISSUE_LABELS[filteredIssues[0]]}”`}
+            />
           ) : null}
           <TextArea
             label="Describe the problem"
@@ -876,31 +1105,49 @@ export function CheckInPrototype() {
           defaultIsOpen={false}
           trigger={
             <Text color="secondary">
-              Pre-repair checklist · {passCount} pass · {failCount} fail · {CHECKLIST.length - passCount - failCount} untested
+              Pre-repair checklist · {passCount} pass · {failCount} fail ·{' '}
+              {checklistItems.length - passCount - failCount} untested
             </Text>
           }
         >
           <VStack gap={3} paddingBlockStart={3}>
-            <HStack gap={2} wrap="wrap">
+            <HStack gap={2} wrap="wrap" vAlign="center">
               <Button
                 label="All pass"
                 size="sm"
-                onClick={() => setChecklist(Object.fromEntries(CHECKLIST.map((c) => [c, 'PASS'])) as Record<string, CheckState>)}
+                onClick={() =>
+                  setChecklist(Object.fromEntries(checklistItems.map((i) => [i.key, 'PASS'])))
+                }
               />
               <Button
                 label="Won't power on (all untested)"
                 size="sm"
-                onClick={() => setChecklist(Object.fromEntries(CHECKLIST.map((c) => [c, 'UNTESTED'])) as Record<string, CheckState>)}
+                onClick={() =>
+                  setChecklist(Object.fromEntries(checklistItems.map((i) => [i.key, 'UNTESTED'])))
+                }
               />
               <ShortcutHint keys="p" label="pass" />
               <ShortcutHint keys="f" label="fail" />
               <ShortcutHint keys="u" label="untested" />
             </HStack>
             <VStack gap={1}>
-              {CHECKLIST.map((item, idx) => (
-                <HStack key={item} gap={3} vAlign="center" hAlign="between" data-check-row onKeyDown={(e: KeyboardEvent<HTMLElement>) => onChecklistKeyDown(e, item, idx)}>
-                  <Text>{item}</Text>
-                  <SegmentedControl label={item} size="sm" value={checklist[item] ?? 'UNTESTED'} onChange={(v) => setChecklist((c) => ({ ...c, [item]: v as CheckState }))}>
+              {checklistItems.map((item) => (
+                <HStack
+                  key={item.key}
+                  gap={3}
+                  vAlign="center"
+                  hAlign="between"
+                  onKeyDown={(e: KeyboardEvent<HTMLElement>) => onChecklistKeyDown(e, item.key)}
+                >
+                  <Text>{item.label}</Text>
+                  <SegmentedControl
+                    label={item.label}
+                    size="sm"
+                    value={checklist[item.key] ?? 'UNTESTED'}
+                    onChange={(v) =>
+                      setChecklist((c) => ({ ...c, [item.key]: v as ChecklistResult }))
+                    }
+                  >
                     <SegmentedControlItem value="PASS" label="Pass" />
                     <SegmentedControlItem value="FAIL" label="Fail" />
                     <SegmentedControlItem value="UNTESTED" label="Untested" />
@@ -908,62 +1155,114 @@ export function CheckInPrototype() {
                 </HStack>
               ))}
             </VStack>
-            <TextArea label="Condition notes" isOptional rows={2} value={conditionNotes} onChange={setConditionNotes} placeholder="e.g. scratches on the back, dent on the corner" />
+            <TextArea
+              label="Condition notes"
+              isOptional
+              rows={2}
+              value={conditionNotes}
+              onChange={setConditionNotes}
+              placeholder="e.g. scratches on the back, dent on the corner"
+            />
           </VStack>
         </Collapsible>
       </SectionCard>
 
       {/* 5. Accessories */}
       <SectionCard index={5} title="Accessories left" isOptional>
-        <ToggleButtonGroup label="Accessories left with the device" type="multiple" value={accessories} onChange={(v) => setAccessories((v as string[]) ?? [])} size="sm">
-          {ACCESSORIES.map((a) => (
-            <ToggleButton key={a} value={a} label={a}>
-              {a}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
-        <Text type="supporting" color="secondary">
-          {accessories.length ? `Left: ${accessories.join(', ')}` : 'Nothing left with the device'}
-        </Text>
+        <RovingGroup>
+          <ToggleButtonGroup
+            label="Accessories left with the device"
+            type="multiple"
+            value={accessories}
+            onChange={(v) => setAccessories(((v as string[]) ?? []) as AccessoryCode[])}
+            size="sm"
+          >
+            {ACCESSORY_CODES.map((a) => (
+              <ToggleButton
+                key={a}
+                value={a}
+                label={ACCESSORY_LABELS[a]}
+                pressedIcon={<Icon icon={CheckIcon} size="sm" />}
+              >
+                {ACCESSORY_LABELS[a]}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        </RovingGroup>
+        {accessories.includes('OTHER') ? (
+          <TextInput label="What else?" value={accessoriesOther} onChange={setAccessoriesOther} />
+        ) : (
+          <Text type="supporting" color="secondary">
+            {accessories.length
+              ? `Left: ${accessories.map((a) => ACCESSORY_LABELS[a]).join(', ')}`
+              : NO_ACCESSORIES_LABEL}
+          </Text>
+        )}
       </SectionCard>
 
       {/* 6. Estimate, due, priority, technician */}
       <SectionCard index={6} title="Estimate, due date and technician">
         <Grid columns={{ minWidth: 200, max: 2 }} gap={4}>
-          <InputGroup label="Estimate (approximate)" isOptional description={shop.pricesIncludeTax ? 'Including tax' : 'Excluding tax'}>
-            <InputGroupText>{shop.currency === 'GBP' ? '£' : shop.currency === 'USD' ? '$' : 'Rs'}</InputGroupText>
-            <TextInput label="Amount" isLabelHidden inputMode="decimal" value={estimate} onChange={setEstimate} placeholder="0.00" />
+          <InputGroup
+            label="Estimate (approximate)"
+            isOptional
+            description={`${ctx.pricesIncludeTax ? 'incl. tax' : 'excl. tax'} · itemised quotes come with the price list`}
+            status={
+              estimate.trim() && estimateMinor === null
+                ? { type: 'error', message: 'Enter an amount' }
+                : undefined
+            }
+          >
+            <InputGroupText>{CURRENCY_PREFIX[ctx.currency]}</InputGroupText>
+            <TextInput
+              label="Amount"
+              isLabelHidden
+              inputMode="decimal"
+              value={estimate}
+              onChange={setEstimate}
+              placeholder={ctx.currency === 'PKR' ? '0' : '0.00'}
+            />
           </InputGroup>
           <DateInput
             label="Due"
             value={due as ISODateString}
             onChange={(v) => v && setDue(v)}
             min={today as ISODateString}
-            description="2 open days, by closing time"
+            description={`${ctx.defaultTurnaroundDays} open days, by closing time`}
             presentation="popover"
+            status={dueProblem ? { type: 'error', message: dueProblem } : undefined}
           />
           <VStack gap={2}>
             <Text weight="medium">Priority</Text>
-            <SegmentedControl label="Priority" value={priority} onChange={setPriority}>
+            <SegmentedControl
+              label="Priority"
+              value={priority}
+              onChange={(v) => setPriority(v as 'NORMAL' | 'URGENT')}
+            >
               <SegmentedControlItem value="NORMAL" label="Normal" />
               <SegmentedControlItem value="URGENT" label="Urgent" />
             </SegmentedControl>
           </VStack>
           <Selector
             label="Technician"
-            value={technician}
-            onChange={(v) => setTechnician(v ?? '')}
+            value={assignee}
+            onChange={(v) => setAssignee(v ?? '')}
             options={[
               { value: '', label: 'Unassigned' },
-              ...TECHNICIANS.map((t) => ({ value: t.id, label: t.name, description: t.role })),
+              ...MOCK_ASSIGNEES.map((a) => ({
+                value: a.userId,
+                label: a.isSelf ? `${a.name} (you)` : a.name,
+                description: a.role === 'TECHNICIAN' ? 'Technician' : 'Owner',
+              })),
             ]}
           />
         </Grid>
       </SectionCard>
 
-      {/* Footer: pinned summary + create */}
+      {/* Footer: pinned summary + create. The one inline style: sticky positioning (as in the
+          Astryx payment-form template's summary column), with a spacing token. */}
       <Card padding={4} elevation="med" style={{ position: 'sticky', bottom: 'var(--spacing-4)' }}>
-        <VStack gap={2} as="section" aria-label="Ticket summary" ref={footerRef}>
+        <VStack gap={2} as="section" aria-label="Ticket summary">
           {showErrors && problems.length > 0 ? (
             <Banner
               status="error"
@@ -979,6 +1278,10 @@ export function CheckInPrototype() {
               <Button label="Create ticket" variant="primary" onClick={create} />
             </HStack>
           </HStack>
+          <Text type="supporting" color="secondary">
+            Signed in as {me.user.name}. Drafts are kept on this device for 24 hours, without the
+            passcode.
+          </Text>
         </VStack>
       </Card>
     </VStack>

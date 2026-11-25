@@ -32,13 +32,21 @@ describe('canBeOverdue', () => {
 
 describe('describeDue', () => {
   it('shows today with the time when one was set, as a "today" tone', () => {
-    const d = describeDue({ dueAt: '2026-11-25T17:00:00Z', hasTime: true, category: 'OPEN' }, UK, NOW);
+    const d = describeDue(
+      { dueAt: '2026-11-25T17:00:00Z', hasTime: true, category: 'OPEN' },
+      UK,
+      NOW,
+    );
     expect(d).toMatchObject({ label: 'Today 17:00', tone: 'today', isOverdue: false });
     expect(d.absolute).toBe('Wed, 25 Nov 2026, 17:00');
   });
 
   it('hides the closing time for a date-only due', () => {
-    const d = describeDue({ dueAt: '2026-11-26T18:00:00Z', hasTime: false, category: 'OPEN' }, UK, NOW);
+    const d = describeDue(
+      { dueAt: '2026-11-26T18:00:00Z', hasTime: false, category: 'OPEN' },
+      UK,
+      NOW,
+    );
     expect(d.label).toBe('Tomorrow');
     expect(d.absolute).toBe('Thu, 26 Nov 2026');
     expect(d.tone).toBe('normal');
@@ -46,30 +54,49 @@ describe('describeDue', () => {
 
   it('uses the weekday within a week and a short date after that', () => {
     expect(
-      describeDue({ dueAt: '2026-11-27T18:00:00Z', hasTime: false, category: 'OPEN' }, UK, NOW).label,
+      describeDue({ dueAt: '2026-11-27T18:00:00Z', hasTime: false, category: 'OPEN' }, UK, NOW)
+        .label,
     ).toBe('Fri');
     expect(
-      describeDue({ dueAt: '2026-12-09T18:00:00Z', hasTime: false, category: 'OPEN' }, UK, NOW).label,
+      describeDue({ dueAt: '2026-12-09T18:00:00Z', hasTime: false, category: 'OPEN' }, UK, NOW)
+        .label,
     ).toBe('9 Dec');
     expect(
-      describeDue({ dueAt: '2027-01-09T18:00:00Z', hasTime: false, category: 'OPEN' }, UK, NOW).label,
+      describeDue({ dueAt: '2027-01-09T18:00:00Z', hasTime: false, category: 'OPEN' }, UK, NOW)
+        .label,
     ).toBe('9 Jan 2027');
   });
 
   it('counts overdue days in the shop time zone', () => {
-    const one = describeDue({ dueAt: '2026-11-24T18:00:00Z', hasTime: false, category: 'WAITING' }, UK, NOW);
+    const one = describeDue(
+      { dueAt: '2026-11-24T18:00:00Z', hasTime: false, category: 'WAITING' },
+      UK,
+      NOW,
+    );
     expect(one).toMatchObject({ label: '1 day overdue', tone: 'overdue', isOverdue: true });
-    const two = describeDue({ dueAt: '2026-11-23T18:00:00Z', hasTime: false, category: 'OPEN' }, UK, NOW);
+    const two = describeDue(
+      { dueAt: '2026-11-23T18:00:00Z', hasTime: false, category: 'OPEN' },
+      UK,
+      NOW,
+    );
     expect(two.label).toBe('2 days overdue');
   });
 
   it('is overdue since a time earlier today', () => {
-    const d = describeDue({ dueAt: '2026-11-25T09:00:00Z', hasTime: true, category: 'OPEN' }, UK, NOW);
+    const d = describeDue(
+      { dueAt: '2026-11-25T09:00:00Z', hasTime: true, category: 'OPEN' },
+      UK,
+      NOW,
+    );
     expect(d).toMatchObject({ label: 'Overdue since 09:00', tone: 'overdue' });
   });
 
   it('never marks ready or closed tickets overdue', () => {
-    const d = describeDue({ dueAt: '2026-11-24T18:00:00Z', hasTime: false, category: 'READY' }, UK, NOW);
+    const d = describeDue(
+      { dueAt: '2026-11-24T18:00:00Z', hasTime: false, category: 'READY' },
+      UK,
+      NOW,
+    );
     expect(d).toMatchObject({ label: 'Yesterday', tone: 'normal', isOverdue: false });
   });
 

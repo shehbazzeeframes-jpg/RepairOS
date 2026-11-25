@@ -34,7 +34,9 @@ describe('MoneyText', () => {
   });
 
   it('adds the tax note', () => {
-    const html = render(<MoneyText amountMinor={8000} currency="GBP" locale="en-GB" taxNote="incl" />);
+    const html = render(
+      <MoneyText amountMinor={8000} currency="GBP" locale="en-GB" taxNote="incl" />,
+    );
     expect(html).toContain('£80.00 incl. tax');
   });
 
@@ -46,7 +48,9 @@ describe('MoneyText', () => {
   it('shows the empty text when there is no amount', () => {
     expect(render(<MoneyText amountMinor={null} currency="GBP" locale="en-GB" />)).toContain('—');
     expect(
-      render(<MoneyText amountMinor={undefined} currency="GBP" locale="en-GB" emptyText="No estimate" />),
+      render(
+        <MoneyText amountMinor={undefined} currency="GBP" locale="en-GB" emptyText="No estimate" />,
+      ),
     ).toContain('No estimate');
   });
 });
@@ -70,7 +74,13 @@ describe('DueChip', () => {
 
   it('is an error badge when overdue', () => {
     const html = render(
-      <DueChip dueAt="2026-11-23T18:00:00Z" hasTime={false} category="WAITING" shop={UK} now={NOW} />,
+      <DueChip
+        dueAt="2026-11-23T18:00:00Z"
+        hasTime={false}
+        category="WAITING"
+        shop={UK}
+        now={NOW}
+      />,
     );
     expect(html).toContain('data-variant="error"');
     expect(html).toContain('2 days overdue');
@@ -117,6 +127,12 @@ describe('ShortcutHint', () => {
     const html = render(<ShortcutHint keys="mod+enter" label="Create ticket" />);
     expect(html).toMatch(/aria-label="(Control|Command) \+ Enter"/);
     expect(html).toContain('Create ticket');
+  });
+
+  it('shows alternative keys side by side', () => {
+    const html = render(<ShortcutHint keys={['up', 'down']} label="Choose" />);
+    expect(html).toContain('aria-label="Up arrow"');
+    expect(html).toContain('aria-label="Down arrow"');
   });
 
   it('groups several hints under a label', () => {

@@ -11,7 +11,7 @@ import {
   CATEGORY_LABEL,
   statusTone,
   type StatusCategory,
-  type StatusTone,
+  type StatusColour,
 } from '@/lib/ticket-display';
 
 /** One glyph per category, so the category reads without colour (story §3, a11y). */
@@ -22,12 +22,13 @@ const CATEGORY_ICON: Record<StatusCategory, ComponentType<SVGProps<SVGSVGElement
   CLOSED: ArchiveBoxIcon,
 };
 
+/** Takes a contract `StatusRef` / `TicketStatus` directly: `<StatusBadge {...ticket.status} />`. */
 export interface StatusBadgeProps {
   /** The shop's own name for the status ("In repair", "Awaiting parts"). */
   name: string;
   category: StatusCategory;
   /** The colour picked in Settings → Ticket statuses; the category's tone when unset. */
-  colour?: StatusTone | null;
+  colour?: StatusColour | null;
 }
 
 /**

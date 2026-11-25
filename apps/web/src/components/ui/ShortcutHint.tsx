@@ -3,8 +3,11 @@ import { Kbd } from '@astryxdesign/core/Kbd';
 import { Text } from '@astryxdesign/core/Text';
 
 export interface ShortcutHintProps {
-  /** Astryx Kbd combo: "mod+enter", "/", "escape", "n". `mod` is ⌘ on macOS, Ctrl elsewhere. */
-  keys: string;
+  /**
+   * Astryx Kbd combo: "mod+enter", "/", "escape", "n", "up". `mod` is ⌘ on macOS, Ctrl elsewhere.
+   * An array shows alternatives side by side (["up", "down"] → ↑ ↓).
+   */
+  keys: string | readonly string[];
   /** What the shortcut does ("Create ticket"). */
   label: string;
 }
@@ -13,7 +16,9 @@ export interface ShortcutHintProps {
 export function ShortcutHint({ keys, label }: ShortcutHintProps) {
   return (
     <HStack gap={1} vAlign="center">
-      <Kbd keys={keys} />
+      {(typeof keys === 'string' ? [keys] : keys).map((k) => (
+        <Kbd key={k} keys={k} />
+      ))}
       <Text type="supporting" color="secondary">
         {label}
       </Text>
@@ -32,7 +37,7 @@ export function ShortcutHints({
   return (
     <HStack gap={4} wrap="wrap" vAlign="center" aria-label={label} role="group">
       {hints.map((h) => (
-        <ShortcutHint key={`${h.keys}:${h.label}`} {...h} />
+        <ShortcutHint key={`${String(h.keys)}:${h.label}`} {...h} />
       ))}
     </HStack>
   );

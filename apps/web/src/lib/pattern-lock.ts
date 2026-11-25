@@ -1,14 +1,14 @@
 /**
- * Pattern-lock rules (DV3.3): dots 1–9 on a 3×3 grid, numbered left to right, top to bottom;
- * a valid pattern is 4–9 distinct dots, stored as the ordered sequence ("1-5-9-6").
+ * Input model for the 3×3 pattern grid. The rules themselves are the contract's `PatternLock`
+ * (4–9 distinct dots 1–9) and `formatPattern` ("1-5-9-6"); this adds the keyboard/tap behaviour.
  */
+import { PatternLock, formatPattern } from '@repairos/contracts';
+
 export const PATTERN_MIN = 4;
 export const PATTERN_MAX = 9;
 
 export type PatternKeyResult =
-  | { kind: 'change'; value: number[] }
-  | { kind: 'confirm' }
-  | { kind: 'ignore' };
+  { kind: 'change'; value: number[] } | { kind: 'confirm' } | { kind: 'ignore' };
 
 /** Keyboard model: a digit adds that dot, Backspace removes the last, Delete clears, Enter confirms. */
 export function patternKey(value: readonly number[], key: string): PatternKeyResult {
@@ -32,10 +32,11 @@ export function patternTap(value: readonly number[], dot: number): number[] {
   return [...value, dot];
 }
 
+/** Field message from the contract schema ("Connect at least 4 dots"); a hint when nothing is drawn. */
 export function patternError(value: readonly number[]): string | null {
   if (value.length === 0) return 'Draw the pattern, or type the dot numbers';
-  if (value.length < PATTERN_MIN) return `Use at least ${PATTERN_MIN} dots`;
-  return null;
+  const parsed = PatternLock.safeParse(value);
+  return parsed.success ? null : (parsed.error.issues[0]?.message ?? 'Check the pattern');
 }
 
 /** "1 → 5 → 9 → 6" for screen readers and the reveal. */
@@ -43,6 +44,4 @@ export function describePattern(value: readonly number[]): string {
   return value.length ? value.join(' → ') : 'No dots yet';
 }
 
-export function serializePattern(value: readonly number[]): string {
-  return value.join('-');
-}
+export const serializePattern = formatPattern;

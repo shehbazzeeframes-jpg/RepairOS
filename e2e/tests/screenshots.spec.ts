@@ -1,9 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import { sprint1Screenshots } from './screenshots-sprint1';
+import { sprint2Screenshots } from './screenshots-sprint2';
+import { selectOption } from './support/select';
 import { ME_NO_SHOP, ME_WITH_SHOP, mockApi } from './support/mock-api';
 
-/** Run with `pnpm --filter @repairos/e2e screenshots`; writes docs/screens/sprint0/*.png and sprint1/*.png. */
+/** Run with `pnpm --filter @repairos/e2e screenshots`; writes docs/screens/sprint0/*.png, sprint1/*.png and sprint2/*.png. */
 const OUT_DIR = fileURLToPath(new URL('../../docs/screens/sprint0/', import.meta.url));
 
 const VIEWPORTS = [
@@ -34,8 +36,7 @@ for (const viewport of VIEWPORTS) {
       await mockApi(page, { me: ME_NO_SHOP });
       await page.goto('/onboarding');
       await page.getByLabel('Shop name').fill('Fix It Phones');
-      await page.getByRole('combobox', { name: 'Country' }).click();
-      await page.getByRole('option', { name: 'United Kingdom' }).click();
+      await selectOption(page, 'Country', 'United Kingdom');
       await expect(page.getByText('Prices include VAT 20%')).toBeVisible();
       await page.getByLabel('Shop name').focus();
       await page.getByLabel('Shop name').blur();
@@ -54,3 +55,4 @@ for (const viewport of VIEWPORTS) {
 }
 
 sprint1Screenshots();
+sprint2Screenshots();

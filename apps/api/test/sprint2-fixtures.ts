@@ -2,6 +2,7 @@
  * Sprint 2 data fixtures, written through the tenant-scoped client as the app role (so RLS applies to the writes).
  * Until the Sprint 2 endpoints exist, tests build customers/devices/tickets with these.
  */
+import { randomUUID } from 'node:crypto';
 import type { PrismaClient, ScopedTx, TenantDb } from '@repairos/db';
 import { nextTicketNumber, tenantDb } from '@repairos/db';
 
@@ -119,6 +120,7 @@ export async function createRepair(appDb: PrismaClient, shopId: string, userId: 
   return db.tx(async (tx) => {
     const c = await createCustomer(tx, shopId, userId, spec);
     const t = await createTicket(tx, shopId, userId, c, { assigneeUserId: userId });
+    await tx.ticketIdempotencyKey.create({ data: { shopId, userId, key: randomUUID(), ticketId: t.ticketId } });
     return { ...c, ...t, statuses: await statusesOf(tx) };
   });
 }

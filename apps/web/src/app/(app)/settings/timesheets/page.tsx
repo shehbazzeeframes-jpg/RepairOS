@@ -8,8 +8,9 @@ import { Icon } from '@astryxdesign/core/Icon';
 import { MoreMenu } from '@astryxdesign/core/MoreMenu';
 import { Selector } from '@astryxdesign/core/Selector';
 import { Switch } from '@astryxdesign/core/Switch';
-import { Table } from '@astryxdesign/core/Table';
+import { Table, pixel, proportional } from '@astryxdesign/core/Table';
 import { Heading, Text } from '@astryxdesign/core/Text';
+import { useToast } from '@astryxdesign/core/Toast';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { VStack } from '@astryxdesign/core/VStack';
@@ -28,9 +29,12 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
+import { DownloadAnchor } from '@/components/DownloadAnchor';
 import { LoadError, PageIntro, RowsSkeleton } from '@/components/PageStates';
 import { RequirePermission, useCan } from '@/components/RequirePermission';
 import { DeleteEntryDialog, EntryDialog } from '@/components/timesheets/EntryDialogs';
+import { downloadFile } from '@/lib/download';
+import { errorMessage } from '@/lib/errors';
 import { qk, timesheetSearch, useStaff, useTimesheets } from '@/lib/queries';
 import { useSession } from '@/lib/shop-context';
 import {
@@ -93,7 +97,22 @@ function TimesheetsContent() {
     () => (staff.data?.items ?? []).filter((s) => s.kind === 'MEMBER' && s.userId),
     [staff.data],
   );
-  const refresh = () => queryClient.invalidateQueries({ queryKey: qk.timesheetsAll });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: qk.timesheetsAll(shop.id) });
+  const showToast = useToast();
+  const [exporting, setExporting] = useState(false);
+  const exportHref = `${TIMESHEET_EXPORT_PATH}?${timesheetSearch(params)}`;
+  // Fetch on click only (BUG-02: never prefetched), and show the API's message if it fails.
+  const exportCsv = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await downloadFile(exportHref, `timesheet-${params.from}-${params.to}.csv`);
+    } catch (err) {
+      showToast({ body: errorMessage(err), type: 'error' });
+    } finally {
+      setExporting(false);
+    }
+  };
   const myRole = me.role as Role;
   const mayEdit = (role: Role, entryUserId: string) =>
     canEditTimeEntry(myRole, role, entryUserId === me.user.id);
@@ -138,13 +157,15 @@ function TimesheetsContent() {
     },
     {
       key: 'flags',
+      // Wide enough for "Closed on deactivation"; several flags wrap (BUG-05).
+      width: proportional(3, { minWidth: 168 }),
       header: 'Flags',
       renderCell: (r: EntryRow) => <Flags entry={r.entry} shopClock={shop} />,
     },
     {
       key: 'actions',
       header: <VisuallyHidden>Actions</VisuallyHidden>,
-      width: { type: 'pixel' as const, value: 64 },
+      width: pixel(48),
       align: 'end' as const,
       renderCell: (r: EntryRow) =>
         mayEdit(person.role, person.userId) ? (
@@ -174,7 +195,13 @@ function TimesheetsContent() {
             <Button
               label="Export CSV"
               icon={<Icon icon={ArrowDownTrayIcon} />}
-              href={`${TIMESHEET_EXPORT_PATH}?${timesheetSearch(params)}`}
+              href={exportHref}
+              as={DownloadAnchor}
+              isLoading={exporting}
+              onClick={(e) => {
+                e.preventDefault();
+                void exportCsv();
+              }}
             />
           ) : null}
           {can('timesheet.edit') ? (
@@ -244,8 +271,9 @@ function TimesheetsContent() {
                 {
                   key: 'name',
                   header: 'Staff',
+                  width: proportional(2, { minWidth: 180 }),
                   renderCell: (p) => (
-                    <HStack gap={2} vAlign="center">
+                    <HStack gap={2} vAlign="center" wrap="wrap">
                       <Text weight="medium">{p.name}</Text>
                       {p.status === 'DEACTIVATED' ? <Badge label="Deactivated" /> : null}
                     </HStack>

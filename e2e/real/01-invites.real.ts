@@ -127,7 +127,7 @@ test.describe('Invites (story §2 S2/S3, §3 A1/A2, §8 E1, D7, D10)', () => {
         type: 'envelope',
         description: JSON.stringify({ from: stored.from, replyTo: stored.replyTo }),
       });
-    expect(stored.replyTo).toBe(owner.email);
+    expect(stored.replyTo).toBeNull(); // L4: no Reply-To with the inviter's unverified address
     expect(stored.from).toMatch(/RepairOS/);
     expect(stored.html).toContain('Accept invite');
     // §6 / E1.5: invite.created + invite.accepted audited, and the token never appears in the audit log.

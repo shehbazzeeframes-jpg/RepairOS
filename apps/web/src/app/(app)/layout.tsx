@@ -17,7 +17,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <SessionProvider value={{ me: gate.me, shop: gate.me.activeShop }}>
-      <AppFrame>{children}</AppFrame>
+      {/* Keyed by shop: when the active shop changes (switch, deactivation fallback, another tab),
+          every dialog, form and local state from the old shop is thrown away (review M3). */}
+      <AppFrame key={gate.me.activeShop.id}>{children}</AppFrame>
     </SessionProvider>
   );
 }

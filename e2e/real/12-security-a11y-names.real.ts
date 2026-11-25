@@ -23,11 +23,6 @@ test('SEC-01 invite and password-reset tokens never reach the API logs (E1.5, Ri
     !logPath || !existsSync(logPath),
     'Set REAL_API_LOG to the API log file to run this check',
   );
-  test.fail(
-    true,
-    'BUG-01: pino-http logs req.url (/api/invites/<token>) and the Referer header (/invite/<token>, /reset-password?token=…)',
-  );
-
   // Invite: open the link and accept it through the browser.
   const owner = await newOwnerShop('US', 'Sec');
   const invitee = uniqueEmail('sec');
@@ -66,7 +61,6 @@ test('SEC-01 invite and password-reset tokens never reach the API logs (E1.5, Ri
 test('A11Y-names-hours each weekday time input has a day-specific accessible name', async ({
   page,
 }) => {
-  test.fail(true, 'BUG-06: every weekday time input is named just "Opens" / "Closes"');
   const owner = await newOwnerShop('GB', 'Names');
   await signInContext(page, owner.email);
   await page.goto('/settings/hours');
@@ -81,10 +75,6 @@ test('A11Y-names-hours each weekday time input has a day-specific accessible nam
 test('A11Y-names-clock the clocked-in button is named "Clocked in {elapsed}" once', async ({
   page,
 }) => {
-  test.fail(
-    true,
-    'BUG-07: the status-dot image label is included, so the name is "Clocked in Clocked in 0m"',
-  );
   const owner = await newOwnerShop('GB', 'Names');
   await signInContext(page, owner.email);
   await page.goto('/');

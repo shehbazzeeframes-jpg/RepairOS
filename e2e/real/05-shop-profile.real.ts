@@ -128,15 +128,11 @@ test.describe('Shop profile (SP1) with market validation', () => {
     expect((await (await owner.ctx.get('/api/shop')).json()).shop.phone).toBe('+442079460018');
   });
 
-  test('PROF-GB-2 the story\'s own UK mobile example "07700 900123" is accepted', async () => {
-    test.fail(
-      true,
-      'BUG-04: 07700 900xxx is an Ofcom drama range that libphonenumber marks invalid; story example and validator disagree',
-    );
+  test('PROF-GB-2 the story\'s UK mobile example "07911 123456" is accepted (BUG-04: story fixed)', async () => {
     const owner = await newOwnerShop('GB', 'Prof');
     const res = await owner.ctx.patch('/api/shop', {
       headers: jsonHeaders,
-      data: { phone: '07700 900123' },
+      data: { phone: '07911 123456' },
     });
     expect(res.status(), await res.text()).toBe(200);
   });

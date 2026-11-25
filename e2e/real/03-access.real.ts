@@ -238,10 +238,6 @@ test.describe('Deactivation (S5)', () => {
   test('DEACT-02b two-shop person, next in-app action after deactivation (Clock in): other shop + banner', async ({
     page,
   }) => {
-    test.fail(
-      true,
-      'BUG-03: the first /api/me after the 403 carries accessRemoved, a second refetch clears it before the banner renders',
-    );
     const { owner, own } = await twoShopPerson(page);
     const meBodies: string[] = [];
     page.on('response', (r) => {

@@ -71,10 +71,6 @@ test.describe('Audit log viewer (AU1)', () => {
 test('AUD-03 merely viewing Timesheets must not write "Exported timesheet" audit events', async ({
   page,
 }) => {
-  test.fail(
-    true,
-    'BUG-02: Next <Link> prefetch of the Export CSV link calls the export endpoint, which audits timesheet.exported',
-  );
   const owner = await newOwnerShop('US', 'Viewer');
   await signInContext(page, owner.email);
   await page.goto('/settings/timesheets');

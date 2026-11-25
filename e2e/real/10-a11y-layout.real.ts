@@ -75,10 +75,6 @@ test.describe('Accessibility (axe) and layout at 1024 / 1440', () => {
   test('LAYOUT-1024 staff table: own name and the "You" badge are readable at 1024px', async ({
     page,
   }) => {
-    test.fail(
-      true,
-      'BUG-05: at 1024px the Name column truncates "Demo Owner" and the "You" badge to "Y…"',
-    );
     await page.setViewportSize({ width: 1024, height: 900 });
     await signInContext(page, SEED.owner);
     await page.goto('/settings/staff');

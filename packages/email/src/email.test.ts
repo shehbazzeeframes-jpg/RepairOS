@@ -13,6 +13,7 @@ import {
   passwordResetEmail,
   readOutboxItem,
   ResendEmailProvider,
+  subjectSafe,
 } from './index';
 
 const message = { to: 'sam@example.com', subject: 'Hi', html: '<p>Hi</p>', text: 'Hi', replyTo: 'owner@example.com' };
@@ -97,13 +98,21 @@ describe('email config (D6)', () => {
     expect(loadEmailConfig({ NODE_ENV: 'production', RESEND_API_KEY: 're_x', EMAIL_FROM: 'a@b.c' }).provider).toBe('resend');
   });
 
+  it('M2: NODE_ENV must be explicit; any value other than development/test needs Resend', () => {
+    expect(() => loadEmailConfig({})).toThrow(/NODE_ENV/);
+    expect(() => loadEmailConfig({ NODE_ENV: '  ' })).toThrow(/NODE_ENV/);
+    expect(() => loadEmailConfig({ NODE_ENV: 'staging' })).toThrow(/RESEND_API_KEY and EMAIL_FROM/);
+    expect(() => loadEmailConfig({ NODE_ENV: 'prod', RESEND_API_KEY: 're_x' })).toThrow(/EMAIL_FROM/);
+    expect(loadEmailConfig({ NODE_ENV: 'test' }).provider).toBe('outbox');
+  });
+
   it('uses the outbox when RESEND_API_KEY is unset, Resend only when it is set', () => {
     const dev = loadEmailConfig({ NODE_ENV: 'development', EMAIL_OUTBOX_DIR: '/tmp/x' });
     expect(dev).toMatchObject({ provider: 'outbox', from: DEV_EMAIL_FROM, outboxDir: '/tmp/x' });
     expect(createEmailProvider(dev).name).toBe('outbox');
     const withKey = loadEmailConfig({ NODE_ENV: 'development', RESEND_API_KEY: 're_x' });
     expect(createEmailProvider(withKey).name).toBe('resend');
-    expect(loadEmailConfig({}).outboxDir).toMatch(/\.outbox$/);
+    expect(loadEmailConfig({ NODE_ENV: 'test' }).outboxDir).toMatch(/\.outbox$/);
   });
 });
 
@@ -118,7 +127,7 @@ describe('templates', () => {
       url: 'http://localhost:3000/invite/abc',
       expiresText: '12/02/2026, 9:00 AM EST',
     });
-    expect(email.subject).toBe('Ava <Owner> invited you to join Fix & Go on RepairOS');
+    expect(email.subject).toBe('Ava Owner invited you to join Fix & Go on RepairOS');
     expect(email.html).toContain('Ava &lt;Owner&gt; (ava@shop.test) has invited you to join <strong>Fix &amp; Go</strong> as <strong>Front desk</strong>');
     expect(email.html).toContain('href="http://localhost:3000/invite/abc"');
     expect(email.html).toContain('Accept invite');
@@ -126,6 +135,24 @@ describe('templates', () => {
     expect(email.text).toContain('http://localhost:3000/invite/abc');
     expect(email.text).toContain('This invite expires on 12/02/2026, 9:00 AM EST.');
     expect(email.text).toContain("If you weren't expecting this, you can ignore this email.");
+  });
+
+  it('L4: names in the subject lose URLs, host names and angle brackets', () => {
+    const email = inviteEmail({
+      inviterName: 'Support <https://evil.example/login>',
+      inviterEmail: 'x@y.z',
+      shopName: 'Verify now at secure-login.com/reset or www.phish.net',
+      roleLabel: 'Front desk',
+      roleDescription: 'd',
+      url: 'http://localhost:3000/invite/abc',
+      expiresText: 'soon',
+    });
+    expect(email.subject).toBe('Support invited you to join Verify now at or on RepairOS');
+    expect(email.subject).not.toMatch(/https?:|www\.|\.com|\.net|[<>]/);
+    expect(email.html).toContain('<title>RepairOS</title>');
+    expect(subjectSafe('Fix.It Repairs', 'a shop')).toBe('Fix.It Repairs');
+    expect(subjectSafe('<<>> http://x.y', 'a shop')).toBe('a shop');
+    expect(subjectSafe('a'.repeat(200), 'x')).toHaveLength(80);
   });
 
   it('password reset email has the link in both parts', () => {

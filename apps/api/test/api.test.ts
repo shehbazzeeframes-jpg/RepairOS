@@ -357,11 +357,23 @@ describe('security hardening', () => {
 
   it('requires APP_DATABASE_URL and a strong auth secret outside tests', () => {
     const base = { BETTER_AUTH_SECRET: 'x'.repeat(40), APP_DATABASE_URL: 'postgresql://repairos_app:pw@localhost/db' };
-    expect(() => loadConfig({ ...base, APP_DATABASE_URL: undefined, DATABASE_URL: 'postgresql://repairos@x/db' })).toThrow(/APP_DATABASE_URL/);
+    expect(() => loadConfig({ ...base, NODE_ENV: 'test', APP_DATABASE_URL: undefined, DATABASE_URL: 'postgresql://repairos@x/db' })).toThrow(/APP_DATABASE_URL/);
     expect(() => loadConfig({ ...base, NODE_ENV: 'development', BETTER_AUTH_SECRET: 'change-me' })).toThrow(/BETTER_AUTH_SECRET/);
     expect(() => loadConfig({ ...base, NODE_ENV: 'development', BETTER_AUTH_SECRET: 'short' })).toThrow(/BETTER_AUTH_SECRET/);
     expect(loadConfig({ ...base, NODE_ENV: 'development' }).trustProxy).toBe('loopback');
-    expect(loadConfig({ ...base, TRUST_PROXY: '2' }).trustProxy).toBe(2);
+    expect(loadConfig({ ...base, NODE_ENV: 'test', TRUST_PROXY: '2' }).trustProxy).toBe(2);
+  });
+
+  it('M2: refuses to start without an explicit NODE_ENV; outside development/test Resend is required', () => {
+    const base = { BETTER_AUTH_SECRET: 'x'.repeat(40), APP_DATABASE_URL: 'postgresql://repairos_app:pw@localhost/db' };
+    expect(() => loadConfig(base)).toThrow(/NODE_ENV/);
+    expect(() => loadConfig({ ...base, NODE_ENV: '' })).toThrow(/NODE_ENV/);
+    expect(() => loadConfig({ ...base, NODE_ENV: 'production' })).toThrow(/RESEND_API_KEY and EMAIL_FROM/);
+    expect(() => loadConfig({ ...base, NODE_ENV: 'staging', RESEND_API_KEY: 're_x' })).toThrow(/EMAIL_FROM/);
+    const prod = loadConfig({ ...base, NODE_ENV: 'production', RESEND_API_KEY: 're_x', EMAIL_FROM: 'a@b.c', DEV_OUTBOX: '1' });
+    expect(prod.email.provider).toBe('resend');
+    expect(prod.devOutbox).toBe(true); // set, but the controller still refuses (see invites.test.ts)
+    expect(loadConfig({ ...base, NODE_ENV: 'development' }).devOutbox).toBe(false);
   });
 
   it('keeps a safe x-request-id and replaces an unsafe one', async () => {

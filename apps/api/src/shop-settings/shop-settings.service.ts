@@ -15,7 +15,7 @@ import {
 } from '@repairos/contracts';
 import type { BusinessHours, ScopedTx, Shop as ShopRow, TaxRate as TaxRateRow } from '@repairos/db';
 import type { Actor } from '../auth/auth-context';
-import { changedFields, writeAudit } from '../common/audit';
+import { changedFields, lockShop, writeAudit } from '../common/audit';
 import { apiError, notFound, validationFailed } from '../common/errors';
 import { ZodValidationPipe } from '../common/zod';
 import { PrismaService } from '../prisma/prisma.service';
@@ -100,6 +100,7 @@ export class ShopSettingsService {
 
   async updateTaxSettings(actor: Actor, input: UpdateTaxSettingsInput): Promise<TaxSettings> {
     return this.db(actor).tx(async (tx) => {
+      await lockShop(tx, actor.shopId);
       const shop = await tx.shop.findFirst();
       if (!shop) throw notFound();
       if (shop.pricesIncludeTax !== input.pricesIncludeTax) {
@@ -121,6 +122,7 @@ export class ShopSettingsService {
 
   async updateHours(actor: Actor, input: UpdateBusinessHoursInput): Promise<{ days: BusinessHoursWeek }> {
     return this.db(actor).tx(async (tx) => {
+      await lockShop(tx, actor.shopId);
       const before = toWeek(await tx.businessHours.findMany());
       const after = input.days;
       if (JSON.stringify(before) === JSON.stringify(after)) return { days: after };
@@ -145,6 +147,9 @@ export class ShopSettingsService {
   }
 
   // ---------- Tax rates ----------
+  // L2: every tax write takes the shop lock first, so concurrent writes serialise and the invariants (unique active
+  // names, one goods / one services default, at least one active rate, defaults can't be archived) are checked
+  // against committed data and fail with their own codes instead of a unique-index CONFLICT.
 
   async listTaxRates(actor: Actor, includeArchived: boolean): Promise<{ items: TaxRate[] }> {
     const rows = await this.db(actor).client.taxRate.findMany({ where: includeArchived ? {} : { archivedAt: null } });
@@ -179,6 +184,7 @@ export class ShopSettingsService {
 
   async createTaxRate(actor: Actor, input: CreateTaxRateInput): Promise<TaxRate> {
     return this.db(actor).tx(async (tx) => {
+      await lockShop(tx, actor.shopId);
       await this.assertNameFree(tx, input.name);
       let rate = await tx.taxRate.create({
         data: { shopId: actor.shopId, name: input.name, rateMilliPct: input.rateMilliPct, appliesTo: input.appliesTo },
@@ -198,6 +204,7 @@ export class ShopSettingsService {
 
   async updateTaxRate(actor: Actor, id: string, input: UpdateTaxRateInput): Promise<TaxRate> {
     return this.db(actor).tx(async (tx) => {
+      await lockShop(tx, actor.shopId);
       let rate = await tx.taxRate.findFirst({ where: { id } });
       if (!rate) throw notFound();
       if (rate.archivedAt) throw apiError('TAX_RATE_ARCHIVED');
@@ -234,6 +241,7 @@ export class ShopSettingsService {
 
   async archiveTaxRate(actor: Actor, id: string): Promise<TaxRate> {
     return this.db(actor).tx(async (tx) => {
+      await lockShop(tx, actor.shopId);
       const rate = await tx.taxRate.findFirst({ where: { id } });
       if (!rate) throw notFound();
       if (rate.archivedAt) return toTaxRateDto(rate);
@@ -256,6 +264,7 @@ export class ShopSettingsService {
 
   async restoreTaxRate(actor: Actor, id: string): Promise<TaxRate> {
     return this.db(actor).tx(async (tx) => {
+      await lockShop(tx, actor.shopId);
       const rate = await tx.taxRate.findFirst({ where: { id } });
       if (!rate) throw notFound();
       if (!rate.archivedAt) return toTaxRateDto(rate);

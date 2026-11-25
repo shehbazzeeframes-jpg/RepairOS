@@ -187,6 +187,33 @@ describe('CSV export (C4)', () => {
     expect(JSON.stringify(audit)).not.toContain('HYPERLINK');
   });
 
+  it('BUG-02: prefetch requests get 204 and write no audit event; a real click still exports', async () => {
+    const owner = await ownerWithShop(app);
+    const url = '/api/timesheets/export.csv?from=2026-11-11&to=2026-11-11';
+    const prefetches: Record<string, string>[] = [
+      { 'Next-Router-Prefetch': '1' },
+      { 'Next-Router-Prefetch': '1', RSC: '1' },
+      { Purpose: 'prefetch' },
+      { 'Sec-Purpose': 'prefetch' },
+      { 'Sec-Purpose': 'prefetch;prerender' },
+      { 'X-Moz': 'prefetch' },
+    ];
+    for (const headers of prefetches) {
+      const res = await owner.agent.get(url).set(headers);
+      expect(res.status).toBe(204);
+      expect(res.text).toBe('');
+    }
+    // Next's second prefetch had no range at all: still 204, not a 400 or an export.
+    expect((await owner.agent.get('/api/timesheets/export.csv?_rsc=abc').set('Next-Router-Prefetch', '1')).status).toBe(204);
+    expect(await auditOf(adminDb, owner.shopId, 'timesheet.exported')).toHaveLength(0);
+
+    await owner.agent.get(url).expect(200);
+    expect(await auditOf(adminDb, owner.shopId, 'timesheet.exported')).toHaveLength(1);
+    // Permission is still checked first: a Technician's prefetch is a 403, not a 204.
+    const tech = await addMember(app, adminDb, owner.shopId, 'TECHNICIAN');
+    expect((await tech.agent.get(url).set('Next-Router-Prefetch', '1')).status).toBe(403);
+  });
+
   it('open entries have an empty clock-out and the "Still open" flag', async () => {
     const owner = await ownerWithShop(app);
     await entry(owner.shopId, owner.userId, iso(26 * H), null);

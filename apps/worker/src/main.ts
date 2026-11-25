@@ -2,27 +2,29 @@
  * RepairOS worker: processes the `default` queue (ping) and the `email` queue (invites, password resets).
  */
 import { assertAppRole, createPrismaClient, type PrismaClient, tenantDb } from '@repairos/db';
-import { createEmailProvider, EMAIL_QUEUE, type InviteEmailTracking, loadEmailConfig, type SendEmailJobData } from '@repairos/email';
+import { createEmailProvider, EMAIL_QUEUE, type InviteEmailTracking, type SendEmailJobData } from '@repairos/email';
 import { Worker } from 'bullmq';
 import { pino } from 'pino';
+import { loadWorkerConfig } from './config';
 import { processEmailJob } from './email-jobs';
 import { processJob, QUEUE_DEFAULT, redisConnection } from './jobs';
 
 const logger = pino({ level: process.env.LOG_LEVEL ?? 'info', name: 'worker' });
 
 async function main() {
-  // D6: refuses to start in production without RESEND_API_KEY and EMAIL_FROM.
-  const emailConfig = loadEmailConfig();
-  const provider = createEmailProvider(emailConfig);
-  const connection = redisConnection(process.env.REDIS_URL ?? 'redis://localhost:6379');
+  // M2/D6/L5: refuses to start without NODE_ENV, and outside development/test without RESEND_API_KEY, EMAIL_FROM
+  // and APP_DATABASE_URL.
+  const config = loadWorkerConfig();
+  const provider = createEmailProvider(config.email);
+  const connection = redisConnection(config.redisUrl);
 
   // Delivery tracking writes invitations.emailStatus as the RLS-bound app role.
   let prisma: PrismaClient | null = null;
-  if (process.env.APP_DATABASE_URL) {
-    prisma = createPrismaClient(process.env.APP_DATABASE_URL);
+  if (config.appDatabaseUrl) {
+    prisma = createPrismaClient(config.appDatabaseUrl);
     await assertAppRole(prisma);
   } else {
-    logger.warn('APP_DATABASE_URL is not set: invite email status will not be tracked');
+    logger.warn('APP_DATABASE_URL is not set: invite email status will not be tracked (development/test only)');
   }
 
   const markInvite = async (track: InviteEmailTracking, status: 'SENT' | 'FAILED') => {

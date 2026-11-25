@@ -54,7 +54,9 @@ export class InvitesService {
 
   /**
    * POST /api/invites/:token/accept. One transaction, under the shop lock (so a double click or two tabs are
-   * idempotent): invite → ACCEPTED, ACTIVE membership with the invite's role (a DEACTIVATED one is reactivated),
+   * idempotent): invite → ACCEPTED, ACTIVE membership with the invite's role. L6: a DEACTIVATED membership is never
+   * reactivated by an invite (only an Owner/Manager's Reactivate does that, with its seat check and audit):
+   * 409 MEMBER_DEACTIVATED and the invite stays pending.
    * emailVerified = true unless the link was copied (D7), session's active shop = this shop, `invite.accepted`.
    * Never fails on seats (the invite already held one).
    */
@@ -93,11 +95,11 @@ export class InvitesService {
         role = existing.role;
         alreadyMember = true;
       } else if (existing) {
-        await tx.membership.update({
-          where: { id: existing.id },
-          data: { status: 'ACTIVE', role: invite.role, deactivatedAt: null, deactivatedByUserId: null },
-        });
-        membershipId = existing.id;
+        throw apiError(
+          'MEMBER_DEACTIVATED',
+          undefined,
+          `Your access to ${shop.name} was turned off. Ask an owner or manager to reactivate you.`,
+        );
       } else {
         membershipId = (await tx.membership.create({ data: { shopId, userId, role: invite.role }, select: { id: true } })).id;
       }

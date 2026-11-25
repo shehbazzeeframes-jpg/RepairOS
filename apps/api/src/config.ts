@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { type EmailConfig, loadEmailConfig } from '@repairos/email';
+import { type EmailConfig, isDevNodeEnv, loadEmailConfig, requireNodeEnv } from '@repairos/email';
 
 export interface AppConfig {
   nodeEnv: string;
@@ -29,9 +29,18 @@ export interface AppConfig {
   shopCreatePerHour: number;
   /** §3: public invite preview requests per IP per minute. INVITE_PREVIEW_RATE_LIMIT, default 30. */
   invitePreviewRateLimit: number;
+  /** L4: password-reset requests per email per hour, across all IPs. PASSWORD_RESET_PER_EMAIL_HOUR, default 5. */
+  passwordResetPerEmailHour: number;
+  /**
+   * M2: GET /api/dev/outbox is served only when DEV_OUTBOX=1 AND the email provider is the file outbox AND
+   * NODE_ENV is development or test (see DevOutboxController).
+   */
+  devOutbox: boolean;
 }
 
 export const CONFIG = Symbol('CONFIG');
+
+export { isDevNodeEnv };
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
   const v = env[name];
@@ -72,7 +81,8 @@ export function parseEmailDelivery(raw: string | undefined, nodeEnv: string): 'q
 const WEAK_SECRETS = new Set(['change-me', 'changeme', 'secret', 'password']);
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  const nodeEnv = env.NODE_ENV ?? 'development';
+  // M2: no default. A missing NODE_ENV used to mean "development" (dev outbox on, file outbox allowed).
+  const nodeEnv = requireNodeEnv(env);
   // Required: the owner/superuser URL would silently switch Row-Level Security off.
   const databaseUrl = required(env, 'APP_DATABASE_URL');
   const secret = required(env, 'BETTER_AUTH_SECRET');
@@ -89,11 +99,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     trustProxy: parseTrustProxy(env.TRUST_PROXY),
     logLevel: env.LOG_LEVEL ?? 'info',
     version: readVersion(),
-    email: loadEmailConfig({ ...env, NODE_ENV: nodeEnv }),
+    email: loadEmailConfig(env),
     emailDelivery: parseEmailDelivery(env.EMAIL_DELIVERY, nodeEnv),
     redisUrl: env.REDIS_URL ?? 'redis://localhost:6379',
     shopOwnedLimit: positiveInt(env.SHOP_OWNED_LIMIT, 3),
     shopCreatePerHour: positiveInt(env.SHOP_CREATE_PER_HOUR, 5),
     invitePreviewRateLimit: positiveInt(env.INVITE_PREVIEW_RATE_LIMIT, 30),
+    passwordResetPerEmailHour: positiveInt(env.PASSWORD_RESET_PER_EMAIL_HOUR, 5),
+    devOutbox: env.DEV_OUTBOX?.trim() === '1',
   };
 }

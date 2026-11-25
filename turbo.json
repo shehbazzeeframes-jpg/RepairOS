@@ -22,7 +22,9 @@
     "EMAIL_DELIVERY",
     "SHOP_OWNED_LIMIT",
     "SHOP_CREATE_PER_HOUR",
-    "INVITE_PREVIEW_RATE_LIMIT"
+    "INVITE_PREVIEW_RATE_LIMIT",
+    "PASSWORD_RESET_PER_EMAIL_HOUR",
+    "DEV_OUTBOX"
   ],
   "tasks": {
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"] },

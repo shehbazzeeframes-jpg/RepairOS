@@ -58,7 +58,7 @@ export class AppModule {
         {
           provide: AUTH,
           inject: [PrismaService, EmailService],
-          useFactory: (p: PrismaService, email: EmailService) => createAuth(p.base, config, (message) => email.dispatch(message)),
+          useFactory: (p: PrismaService, email: EmailService) => createAuth(p.base, config, (message) => email.dispatch(message), logger),
         },
         MeService,
         ShopsService,

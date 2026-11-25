@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Res } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Query, Req, Res } from '@nestjs/common';
 import {
   CreateTimeEntryInput,
   DeleteTimeEntryInput,
@@ -8,9 +8,10 @@ import {
   type TimesheetResponse,
   UpdateTimeEntryInput,
 } from '@repairos/contracts';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { type Actor, CurrentActor, RequirePermission } from '../auth/auth-context';
-import { ZodBody, ZodQuery } from '../common/zod';
+import { isPrefetchRequest } from '../common/prefetch';
+import { ZodBody, ZodQuery, ZodValidationPipe } from '../common/zod';
 import { TimeclockService } from './timeclock.service';
 
 /** Self clock in/out (story §5 C1). Server time only; scope is the active shop. */
@@ -52,11 +53,14 @@ export class TimesheetsController {
 
   @RequirePermission('timesheet.export')
   @Get('export.csv')
-  async export(
-    @CurrentActor() actor: Actor,
-    @ZodQuery(TimesheetQuery) query: TimesheetQuery,
-    @Res() res: Response,
-  ): Promise<void> {
+  async export(@CurrentActor() actor: Actor, @Query() rawQuery: unknown, @Req() req: Request, @Res() res: Response): Promise<void> {
+    // BUG-02: the export writes a `timesheet.exported` audit event, so a prefetch (Next <Link>, browser
+    // speculation) must not run it: 204 with no body, before the query is even validated.
+    if (isPrefetchRequest(req.headers)) {
+      res.status(204).set('Cache-Control', 'no-store').end();
+      return;
+    }
+    const query = new ZodValidationPipe(TimesheetQuery).transform(rawQuery);
     const { filename, body } = await this.timeclock.exportCsv(actor, query);
     res
       .status(200)

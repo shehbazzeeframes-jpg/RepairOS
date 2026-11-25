@@ -37,6 +37,13 @@ for (const width of [1440, 1024]) {
         assignee: { userId: 'usr_9', name: 'Fred Formerly-Employed', active: false },
       }),
       ticket({
+        id: 'tkt_1036',
+        number: 1036,
+        statusId: ST.parts,
+        dueAt: new Date(Date.now() - 12 * 86_400_000).toISOString(),
+        isOverdue: true,
+      }),
+      ticket({
         id: 'tkt_1037',
         number: 1037,
         statusId: ST.ready,
@@ -47,11 +54,19 @@ for (const width of [1440, 1024]) {
     await page.goto('/tickets?view=all');
     await expect(page.getByRole('link', { name: 'T-1038' })).toBeVisible();
     await expect(page.getByText('Fred Formerly-Employed (deactivated)')).toBeVisible();
+    await expect(page.getByText('12 days overdue')).toBeVisible();
     expect(await cutTexts(page, 'table tbody *')).toEqual([]);
     const over = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(over).toBe(0);
+    // Wider status floors must not push the table itself into horizontal scroll either.
+    const tableOver = await page.evaluate(() => {
+      let el: HTMLElement | null = document.querySelector('table');
+      while (el && getComputedStyle(el).overflowX === 'visible') el = el.parentElement;
+      return el ? el.scrollWidth - el.clientWidth : 0;
+    });
+    expect(tableOver).toBeLessThanOrEqual(1);
   });
 }
 

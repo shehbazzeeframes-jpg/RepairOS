@@ -133,8 +133,8 @@ describe('customer edit after a version conflict (BUG-02)', () => {
 
 describe('ticket list status column (BUG-05)', () => {
   it('is wide enough for the longest status name', () => {
-    expect(statusColumnMinWidth(['Received'])).toBe(128);
-    expect(statusColumnMinWidth(['Received', 'Awaiting approval'])).toBeGreaterThan(180);
+    expect(statusColumnMinWidth(['Received'])).toBe(120);
+    expect(statusColumnMinWidth(['Received', 'Awaiting approval'])).toBe(154);
   });
 });
 

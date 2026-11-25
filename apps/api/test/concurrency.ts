@@ -26,3 +26,31 @@ export async function whileLocked<T>(
   );
   return pending!;
 }
+
+/**
+ * Like `whileLocked`, but a second step runs in the SAME owner transaction once the request has had `waitMs` to run
+ * into the held locks: `then(tx)` can take a lock the request already holds (a lock cycle → Postgres aborts the
+ * transaction that waited first, i.e. the request) or run a statement that waits for it. The transaction commits
+ * `holdMs` after `then` returns. Returns the request's result.
+ */
+export async function whileLockedThen<T>(
+  adminDb: PrismaClient,
+  hold: (tx: Prisma.TransactionClient) => Promise<unknown>,
+  request: () => PromiseLike<T>,
+  then: (tx: Prisma.TransactionClient) => Promise<unknown>,
+  opts: { waitMs?: number; holdMs?: number } = {},
+): Promise<T> {
+  let pending: Promise<T> | undefined;
+  await adminDb.$transaction(
+    async (tx) => {
+      await hold(tx);
+      pending = (async () => await request())();
+      pending.catch(() => undefined);
+      await sleep(opts.waitMs ?? 400);
+      await then(tx);
+      await sleep(opts.holdMs ?? 300);
+    },
+    { timeout: 30_000 },
+  );
+  return pending!;
+}

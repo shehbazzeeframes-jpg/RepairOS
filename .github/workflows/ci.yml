@@ -1,0 +1,50 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: repairos
+          POSTGRES_PASSWORD: repairos
+          POSTGRES_DB: repairos_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U repairos" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+    env:
+      DATABASE_URL: postgresql://repairos:repairos@localhost:5432/repairos_test
+      DATABASE_URL_TEST: postgresql://repairos:repairos@localhost:5432/repairos_test
+      REDIS_URL: redis://localhost:6379
+      BETTER_AUTH_SECRET: ci-only-secret-not-used-anywhere-else-000
+      FIELD_ENCRYPTION_KEY: Y2ktb25seS1rZXktMzItYnl0ZXMtbG9uZy0wMDAwMDA=
+      APP_URL: http://localhost:3000
+      API_URL: http://localhost:4000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: E2E
+        run: |
+          npx playwright install --with-deps chromium
+          pnpm e2e -- --trace off

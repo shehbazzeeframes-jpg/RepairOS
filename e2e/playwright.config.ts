@@ -41,6 +41,10 @@ export default defineConfig({
         url: `${baseURL}/sign-in`,
         reuseExistingServer: !process.env.CI,
         timeout: 240_000,
-        env: { API_URL: 'http://127.0.0.1:9', NEXT_TELEMETRY_DISABLED: '1' },
+        env: {
+          API_URL: 'http://127.0.0.1:9',
+          NEXT_DIST_DIR: '.next-e2e',
+          NEXT_TELEMETRY_DISABLED: '1',
+        },
       },
 });

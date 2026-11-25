@@ -8,6 +8,7 @@ export default tseslint.config(
   {
     ignores: [
       '.next/**',
+      '.next-e2e/**',
       'node_modules/**',
       'next-env.d.ts',
       'astryx-themes.js',

@@ -145,13 +145,16 @@ export class TicketQueryService {
         break;
       }
       case 'closed': {
-        order = Prisma.sql`t."closedAt" DESC NULLS LAST, t."id" DESC`;
+        // Same order as tickets_closed_idx (closedAt DESC, id) so the Closed view is an index scan, not a sort of
+        // the whole history. Only the Closed view is guaranteed non-null; elsewhere open tickets (null) go last.
+        order =
+          q.view === 'closed' ? Prisma.sql`t."closedAt" DESC, t."id"` : Prisma.sql`t."closedAt" DESC NULLS LAST, t."id"`;
         const c = decodeKeyset(q.cursor, ['date?', 'string']);
         if (c) {
           const [at, id] = c as [Date | null, string];
           after = at
-            ? Prisma.sql`AND (t."closedAt" < ${at} OR (t."closedAt" = ${at} AND t."id" < ${id}) OR t."closedAt" IS NULL)`
-            : Prisma.sql`AND t."closedAt" IS NULL AND t."id" < ${id}`;
+            ? Prisma.sql`AND (t."closedAt" < ${at} OR (t."closedAt" = ${at} AND t."id" > ${id}) OR t."closedAt" IS NULL)`
+            : Prisma.sql`AND t."closedAt" IS NULL AND t."id" > ${id}`;
         }
         keyOf = (r) => [r.closedAt?.toISOString() ?? null, r.id];
         break;
@@ -166,9 +169,10 @@ export class TicketQueryService {
       case 'created':
       case 'updated': {
         const col = sort === 'created' ? Prisma.sql`t."createdAt"` : Prisma.sql`t."updatedAt"`;
-        order = Prisma.sql`${col} DESC, t."id" DESC`;
+        // (createdAt DESC, id) matches tickets_created_idx.
+        order = Prisma.sql`${col} DESC, t."id"`;
         const c = decodeKeyset(q.cursor, ['date', 'string']);
-        if (c) after = Prisma.sql`AND (${col}, t."id") < (${c[0] as Date}, ${c[1] as string})`;
+        if (c) after = Prisma.sql`AND (${col} < ${c[0] as Date} OR (${col} = ${c[0] as Date} AND t."id" > ${c[1] as string}))`;
         keyOf = (r) => [(sort === 'created' ? r.createdAt : r.updatedAt).toISOString(), r.id];
         break;
       }

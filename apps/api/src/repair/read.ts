@@ -47,13 +47,30 @@ export interface ShopInfo {
   deletePasscodeOnClose: boolean;
 }
 
-/** The transaction's shop with its hours and ticket settings. */
+interface ShopInfoRow {
+  id: string;
+  name: string;
+  country: CountryCode;
+  currency: CurrencyCode;
+  locale: string;
+  timezone: string;
+  pricesIncludeTax: boolean;
+  numberPrefix: string | null;
+  defaultTurnaroundDays: number | null;
+  deletePasscodeOnClose: boolean | null;
+  hours: { weekday: number; isOpen: boolean; opensAt: string | null; closesAt: string | null }[];
+}
+
+/** The transaction's shop with its hours and ticket settings, in one round trip (every Sprint 2 request needs it). */
 export async function loadShopInfo(tx: ScopedTx): Promise<ShopInfo> {
-  const [shop, hours, settings] = await Promise.all([
-    tx.shop.findFirst(),
-    tx.businessHours.findMany({ orderBy: { weekday: 'asc' } }),
-    tx.shopTicketSettings.findFirst(),
-  ]);
+  const [shop] = await tx.$queryRaw<ShopInfoRow[]>`
+    SELECT s."id", s."name", s."country"::text AS "country", s."currency"::text AS "currency", s."locale", s."timezone",
+           s."pricesIncludeTax", st."numberPrefix", st."defaultTurnaroundDays", st."deletePasscodeOnClose",
+           (SELECT coalesce(json_agg(json_build_object('weekday', h."weekday", 'isOpen', h."isOpen", 'opensAt', h."opensAt",
+                                                       'closesAt', h."closesAt") ORDER BY h."weekday"), '[]'::json)
+              FROM "business_hours" h WHERE h."shopId" = s."id") AS "hours"
+    FROM "shops" s LEFT JOIN "shop_ticket_settings" st ON st."shopId" = s."id"
+    WHERE s."id" = app_current_shop_id()`;
   if (!shop) throw notFound();
   return {
     id: shop.id,
@@ -63,10 +80,10 @@ export async function loadShopInfo(tx: ScopedTx): Promise<ShopInfo> {
     locale: shop.locale,
     timezone: shop.timezone,
     pricesIncludeTax: shop.pricesIncludeTax,
-    hours: toWeek(hours),
-    prefix: settings?.numberPrefix ?? 'T-',
-    turnaroundDays: settings?.defaultTurnaroundDays ?? 2,
-    deletePasscodeOnClose: settings?.deletePasscodeOnClose ?? true,
+    hours: toWeek(shop.hours as Parameters<typeof toWeek>[0]),
+    prefix: shop.numberPrefix ?? 'T-',
+    turnaroundDays: shop.defaultTurnaroundDays ?? 2,
+    deletePasscodeOnClose: shop.deletePasscodeOnClose ?? true,
   };
 }
 
